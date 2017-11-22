@@ -91,4 +91,4 @@ ENV/
 
 # temporary files
 *.json
-data_paths.txt
+qald-*.txt

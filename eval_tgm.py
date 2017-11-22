@@ -12,13 +12,35 @@ def err_print(err_type, msg):
 
 def load_qald_dataset(fn):
     """
-    Load QALD dataset from json file
+    Load QALD dataset (json file)
 
     :param fn: filename
     :return: list of 3-tuples (NL question, answertype, SPARQL query)
     """
-    return [(q['question'][0]['string'], q['answertype'], q['query']['pseudo'])
-            for q in json.load(open(fn))['questions']]
+    qs = []
+
+    for e in json.load(open(fn))['questions']:
+        tmp_q, tmp_a, tmp_s = None, None, None
+
+        # NL question
+        for q in e['question']:
+            if q['language'] == 'en':
+                tmp_q = q['string']
+                break
+
+        # answertype
+        tmp_a = e['answertype']
+
+        # SPARQL query
+        if 'sparql' in e['query']:
+            tmp_s = e['query']['sparql']
+        #elif 'pseudo' in e['query']:
+        #    tmp_s = e['query']['pseudo']
+
+        if tmp_q and tmp_a and tmp_s:
+            qs.append((tmp_q, tmp_a, tmp_s))
+
+    return qs
 
 def run_tgm(question, lang='en',
             tgm_url='http://ws.okbqa.org:1515/templategeneration/rocknrole'):
@@ -50,7 +72,11 @@ def prepare_data(fns):
             err_print('Warning',
                       'Input file "' + bn + ext + '" is not a json file; skipping')
             continue
-        tcf = './cache/' + bn + '-cache.json'
+
+        cdir = './cache/'
+        if not os.path.exists(cdir):
+            os.mkdir(cdir)
+        tcf = cdir + bn + '-cache.json'
 
         # load qald dataset and run TGM (or load cache)
         if os.path.exists(tcf):
@@ -91,4 +117,4 @@ if __name__ == '__main__':
     data = prepare_data(fns)
 
     # debug
-    print(json.dumps(data, sort_keys=True, indent=4))
+    print('total: ' + str(len(data)))
