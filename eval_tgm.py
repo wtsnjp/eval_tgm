@@ -7,14 +7,16 @@ import sys
 import json
 import requests
 
+# private functions
 def err_print(err_type, msg):
     sys.stderr.write(err_type + ': ' + msg + '.\n')
 
-def load_qald_dataset(fn):
+def load_qald_dataset(fn, lang):
     """
     Load QALD dataset (json file)
 
     :param fn: filename
+    :param lang: language
     :return: list of 3-tuples (NL question, answertype, SPARQL query)
     """
     qs = []
@@ -24,7 +26,7 @@ def load_qald_dataset(fn):
 
         # NL question
         for q in e['question']:
-            if q['language'] == 'en':
+            if q['language'] == lang:
                 tmp_q = q['string']
                 break
 
@@ -34,33 +36,34 @@ def load_qald_dataset(fn):
         # SPARQL query
         if 'sparql' in e['query']:
             tmp_s = e['query']['sparql']
-        #elif 'pseudo' in e['query']:
-        #    tmp_s = e['query']['pseudo']
 
         if tmp_q and tmp_a and tmp_s:
             qs.append((tmp_q, tmp_a, tmp_s))
 
     return qs
 
-def run_tgm(question, lang='en',
-            tgm_url='http://ws.okbqa.org:1515/templategeneration/rocknrole'):
+def run_tgm(question, lang, tgm_url):
     """
     Run TGM of OKBQA using REST API
 
     :param question: NL question
-    :param lang: (optional) language
-    :param tgm_url: (optional) REST API's endpoint of TGM
+    :param lang: language
+    :param tgm_url: REST API's endpoint of TGM
     :return: json data including {"query", "score", "slots"}
     """
     tgm_in = '{ "string": "%s", "language": "%s" }' % (question, lang)
     r = requests.post(tgm_url, data=tgm_in)
     return json.loads(r.text)
 
-def prepare_data(fns):
+# public functions
+def prepare_data(fns, lang='en',
+                 tgm_url='http://ws.okbqa.org:1515/templategeneration/rocknrole'):
     """
     Prepare data for evaluation (use cache if exists)
 
     :param fn: list of filenames
+    :param lang: (optional) language
+    :param tgm_url: (optional) REST API's endpoint of TGM
     :return: list of dicts (whole data)
     """
     data = []
@@ -86,8 +89,8 @@ def prepare_data(fns):
             f.close()
 
         else:
-            dataset = load_qald_dataset(fn)
-            templates = [run_tgm(d[0]) for d in dataset]
+            dataset = load_qald_dataset(fn, lang)
+            templates = [run_tgm(d[0], lang, tgm_url) for d in dataset]
 
             tmp = [
                 {
@@ -99,7 +102,6 @@ def prepare_data(fns):
                     'tgm-slots': t[0]['slots']
                 }
                 for d, t in zip(dataset, templates)
-                if len(t) > 0
             ]
 
             f = open(tcf, 'w')
