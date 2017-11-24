@@ -7,10 +7,21 @@ import sys
 import json
 import requests
 
-# private functions
-def err_print(err_type, msg):
-    sys.stderr.write(err_type + ': ' + msg + '.\n')
+# logging
+from logging import getLogger, StreamHandler, Formatter, DEBUG
 
+logger    = getLogger(__name__)
+handler   = StreamHandler()
+formatter = Formatter('%(levelname)s: %(message)s')
+
+handler.setLevel(DEBUG)
+handler.setFormatter(formatter)
+
+logger.setLevel(DEBUG)
+logger.addHandler(handler)
+logger.propagate = False
+
+# private functions
 def load_qald_dataset(fn, lang):
     """
     Load QALD dataset (json file)
@@ -72,8 +83,7 @@ def prepare_data(fns, lang='en',
         # cache file name
         bn, ext = os.path.splitext(os.path.basename(fn))
         if ext != '.json':
-            err_print('Warning',
-                      'Input file "' + bn + ext + '" is not a json file; skipping')
+            logger.warning('Input file "{}{}" is not a json file; skipping'.format(bn, ext))
             continue
 
         cdir = './cache/'
@@ -83,7 +93,7 @@ def prepare_data(fns, lang='en',
 
         # load qald dataset and run TGM (or load cache)
         if os.path.exists(tcf):
-            err_print('Info', 'Loading a cache file "' + tcf + '"')
+            logger.info('Loading a cache file "{}"'.format(tcf))
             f = open(tcf, 'r')
             tmp = json.load(f)
             f.close()
@@ -109,7 +119,9 @@ def prepare_data(fns, lang='en',
             f.close()
 
         data.extend(tmp)
-        err_print('Info', 'Prepared ' + str(len(tmp)) + ' queries from "' + fn + '"')
+        logger.info('Prepared {} queries from "{}"'.format(len(tmp), fn))
+
+    logger.info('Total data size: {}'.format(len(data)))
 
     return data
 
@@ -117,6 +129,3 @@ if __name__ == '__main__':
     fns = sys.argv[1:]
 
     data = prepare_data(fns)
-
-    # debug
-    print('total: ' + str(len(data)))
