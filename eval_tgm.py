@@ -10,9 +10,9 @@ import requests
 # logging
 from logging import getLogger, StreamHandler, Formatter, DEBUG
 
-logger    = getLogger(__name__)
+logger    = getLogger('eval_tgm')
 handler   = StreamHandler()
-formatter = Formatter('%(levelname)s: %(message)s')
+formatter = Formatter('%(name)s %(levelname)s: %(message)s')
 
 handler.setLevel(DEBUG)
 handler.setFormatter(formatter)
@@ -21,111 +21,145 @@ logger.setLevel(DEBUG)
 logger.addHandler(handler)
 logger.propagate = False
 
-# private functions
-def load_qald_dataset(fn, lang):
+# class
+class TgmEvaluator:
     """
-    Load QALD dataset (json file)
-
-    :param fn: filename
-    :param lang: language
-    :return: list of 3-tuples (NL question, answertype, SPARQL query)
+    Evaluator for specified TGM
     """
-    qs = []
 
-    for e in json.load(open(fn))['questions']:
-        tmp_q, tmp_a, tmp_s = None, None, None
+    def __init__(self, name, url, language='en', cache=False):
+        """
+        Initialize TGM Evaluator
 
-        # NL question
-        for q in e['question']:
-            if q['language'] == lang:
-                tmp_q = q['string']
-                break
+        :param name: name of TGM
+        :param url: REST API's endpoint of TGM
+        :param language: (optional) language to use for evaluation
+        :param cache: (optional) if True, cache file will be used
+        """
 
-        # answertype
-        tmp_a = e['answertype']
+        self.name  = name
+        self.url   = url
+        self.lang  = language
+        self.cache = cache
+        self.data  = []
 
-        # SPARQL query
-        if 'sparql' in e['query']:
-            tmp_s = e['query']['sparql']
+    def __load_qald_dataset(self, fn):
+        """
+        Load QALD dataset (json file)
 
-        if tmp_q and tmp_a and tmp_s:
-            qs.append((tmp_q, tmp_a, tmp_s))
+        :param fn: filename
+        :return: list of 3-tuples (NL question, answertype, SPARQL query)
+        """
 
-    return qs
+        qs = []
 
-def run_tgm(question, lang, tgm_url):
-    """
-    Run TGM of OKBQA using REST API
-
-    :param question: NL question
-    :param lang: language
-    :param tgm_url: REST API's endpoint of TGM
-    :return: json data including {"query", "score", "slots"}
-    """
-    tgm_in = '{ "string": "%s", "language": "%s" }' % (question, lang)
-    r = requests.post(tgm_url, data=tgm_in)
-    return json.loads(r.text)
-
-# public functions
-def prepare_data(fns, lang='en',
-                 tgm_url='http://ws.okbqa.org:1515/templategeneration/rocknrole'):
-    """
-    Prepare data for evaluation (use cache if exists)
-
-    :param fn: list of filenames
-    :param lang: (optional) language
-    :param tgm_url: (optional) REST API's endpoint of TGM
-    :return: list of dicts (whole data)
-    """
-    data = []
-
-    for fn in fns:
-        # cache file name
+        # check extention
         bn, ext = os.path.splitext(os.path.basename(fn))
         if ext != '.json':
-            logger.warning('Input file "{}{}" is not a json file; skipping'.format(bn, ext))
-            continue
+            logger.warning('Input file "{}" is not a json file; skipping'.format(fn))
+            return qs
 
-        cdir = './cache/'
-        if not os.path.exists(cdir):
-            os.mkdir(cdir)
-        tcf = cdir + bn + '-cache.json'
+        # get data from json file
+        for e in json.load(open(fn))['questions']:
+            tmp_q, tmp_a, tmp_s = None, None, None
 
-        # load qald dataset and run TGM (or load cache)
-        if os.path.exists(tcf):
-            logger.info('Loading a cache file "{}"'.format(tcf))
-            f = open(tcf, 'r')
-            tmp = json.load(f)
-            f.close()
+            # NL question
+            for q in e['question']:
+                if q['language'] == self.lang:
+                    tmp_q = q['string']
+                    break
 
-        else:
-            dataset = load_qald_dataset(fn, lang)
-            templates = [run_tgm(d[0], lang, tgm_url) for d in dataset]
+            # answertype
+            tmp_a = e['answertype']
+
+            # SPARQL query
+            if 'sparql' in e['query']:
+                tmp_s = e['query']['sparql']
+
+            # use only questions which have all of 3 attributes
+            if tmp_q and tmp_a and tmp_s:
+                qs.append((tmp_q, tmp_a, tmp_s))
+
+        return qs
+
+    def __run_tgm(self, question):
+        """
+        Run TGM of OKBQA using REST API
+
+        :param question: NL question
+        :return: json data including {"query", "score", "slots"}
+        """
+        tgm_in = '{{ "string": "{}", "language": "{}" }}'.format(question, self.lang)
+        r = requests.post(self.url, data=tgm_in)
+        return json.loads(r.text)
+
+    def add_data(self, filenames, provider='qald'):
+        """
+        Add data in specified files
+
+        :param filenames: list of dataset filenames
+        :param provider: (optional) name of dataset provider
+        """
+
+        for fn in filenames:
+            # use cache file if exists
+            if self.cache:
+                cdir = './cache/'
+                if not os.path.exists(cdir):
+                    os.mkdir(cdir)
+
+                bn, ext = os.path.splitext(os.path.basename(fn))
+                tcf = cdir + '{}-{}.json'.format(bn, self.name)
+
+                if os.path.exists(tcf):
+                    logger.info('Loading a cache file "{}"'.format(tcf))
+                    f = open(tcf, 'r')
+                    tmp = json.load(f)
+                    f.close()
+
+                    self.data.extend(tmp)
+                    continue
+
+            # load qald dataset and run TGM
+            if provider == 'qald':
+                dataset = self.__load_qald_dataset(fn)
+            templates = [self.__run_tgm(d[0]) for d in dataset]
 
             tmp = [
                 {
-                    'qald-question': d[0],
-                    'qald-type': d[1],
-                    'qald-query': d[2],
-                    'tgm-query': t[0]['query'],
-                    'tgm-score': t[0]['score'],
-                    'tgm-slots': t[0]['slots']
+                    'qald': {
+                        'question': d[0],
+                        'type': d[1],
+                        'query': d[2],
+                    },
+                    self.name: {
+                        'query': t[0]['query'],
+                        'score': t[0]['score'],
+                        'slots': t[0]['slots']
+                    }
                 }
                 for d, t in zip(dataset, templates)
             ]
 
-            f = open(tcf, 'w')
-            f.write(json.dumps(tmp, sort_keys=True, indent=4))
-            f.close()
+            self.data.extend(tmp)
+            logger.info('Prepared {} queries from "{}"'.format(len(tmp), fn))
 
-        data.extend(tmp)
-        logger.info('Prepared {} queries from "{}"'.format(len(tmp), fn))
+            # write cache
+            if self.cache:
+                f = open(tcf, 'w')
+                f.write(json.dumps(tmp, sort_keys=True, indent=4))
+                f.close()
 
-    logger.info('Total data size: {}'.format(len(data)))
+        logger.info('Current data size: {}'.format(len(self.data)))
 
-    return data
+# run script functions
+def main():
+    fns      = sys.argv[1:]
+    tgm_name = 'rocknrole'
+    tgm_url  = 'http://ws.okbqa.org:1515/templategeneration/rocknrole'
+
+    evaluator = TgmEvaluator(tgm_name, tgm_url, cache=True)
+    evaluator.add_data(fns)
 
 if __name__ == '__main__':
-    fns = sys.argv[1:]
-
-    data = prepare_data(fns)
+    main()
