@@ -6,6 +6,7 @@ import os
 import sys
 import json
 import requests
+import re
 
 # logging
 from logging import getLogger, StreamHandler, Formatter, DEBUG
@@ -21,7 +22,7 @@ logger.setLevel(DEBUG)
 logger.addHandler(handler)
 logger.propagate = False
 
-# class
+# evaluator
 class TgmEvaluator:
     """
     Evaluator for specified TGM
@@ -152,7 +153,36 @@ class TgmEvaluator:
 
         logger.info('Current data size: {}'.format(len(self.data)))
 
+    def eval(self):
+        """
+        Evaluate the TGM
+
+        :return: result dict
+        """
+
+        result = {'type_errors': 0}
+
+        # patterns
+        ask_query = re.compile('(ASK|ask)')
+
+        for q in self.data:
+            # question type
+            yes_no = q['qald']['type'] == 'boolean'
+            ask    = not ask_query.search(q[self.name]['query']) is None
+            if yes_no != ask:
+                q['eval'] = { 'bad': 'type_error' }
+                result['type_errors'] += 1
+                continue
+
+        return result
+
 # run script functions
+def save_errors(data):
+    errors = [q for q in data if q.get('eval', False)]
+    f = open('./erros.json', 'w')
+    f.write(json.dumps(errors, sort_keys=True, indent=4))
+    f.close()
+
 def main():
     fns      = sys.argv[1:]
     tgm_name = 'rocknrole'
@@ -160,6 +190,12 @@ def main():
 
     evaluator = TgmEvaluator(tgm_name, tgm_url, cache=True)
     evaluator.add_data(fns)
+
+    result = evaluator.eval()
+    for k, v in result.items():
+        print('{}: {}'.format(k, v))
+
+    save_errors(evaluator.data)
 
 if __name__ == '__main__':
     main()
