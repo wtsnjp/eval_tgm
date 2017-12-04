@@ -1,10 +1,10 @@
 #!/bin/env python
 
 """
-Module evaluator
+Module TGM Evaluator
 """
 
-from lib import get_logger
+from okbqa_evaluators import get_logger
 
 import os
 import json
@@ -33,7 +33,7 @@ class TgmEvaluator:
 
         # internal
         self.data   = []
-        self.logger = get_logger('tgm_evaluator')
+        self.logger = get_logger(__name__)
 
     def __load_qald_dataset(self, fn):
         """
@@ -52,21 +52,21 @@ class TgmEvaluator:
             return qs
 
         # get data from json file
-        for e in json.load(open(fn))['questions']:
+        self.logger.info('Loading QALD dataset "{}"'.format(fn))
+        for e in json.load(open(fn)).get('questions', dict()):
             tmp_q, tmp_a, tmp_s = None, None, None
 
             # NL question
-            for q in e['question']:
-                if q['language'] == self.lang:
-                    tmp_q = q['string']
+            for q in e.get('question', dict()):
+                if q.get('language', None) == self.lang:
+                    tmp_q = q.get('string', None)
                     break
 
             # answertype
-            tmp_a = e['answertype']
+            tmp_a = e.get('answertype', None)
 
             # SPARQL query
-            if 'sparql' in e['query']:
-                tmp_s = e['query']['sparql']
+            tmp_s = e.get('query', dict()).get('sparql', None)
 
             # use only questions which have all of 3 attributes
             if tmp_q and tmp_a and tmp_s:

@@ -1,3 +1,7 @@
+# package declaration
+__all__ = ['tgm_evaluator']
+
+# logging
 import logging as log
 
 def get_logger(name):

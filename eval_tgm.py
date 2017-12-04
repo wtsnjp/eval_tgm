@@ -5,7 +5,7 @@
 import sys
 import json
 
-from lib.evaluator import TgmEvaluator
+from okbqa_evaluators.tgm_evaluator import TgmEvaluator
 
 def save_errors(data):
     errors = [q for q in data if q['eval']['score'] < 1.0]
@@ -28,7 +28,7 @@ def main():
     # show results
     for k, v in result.items():
         print('{}: {}'.format(k, v))
-    save_errors(evaluator.data)
+    #save_errors(evaluator.data)
 
 if __name__ == '__main__':
     main()
