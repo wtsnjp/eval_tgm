@@ -16,6 +16,8 @@ class TgmEvaluator:
     Evaluator for specified TGM and language
     """
 
+    logger = get_logger('tgm_evaluator')
+
     def __init__(self, name, url, language='en', cache=False):
         """
         Initialize TGM Evaluator
@@ -33,11 +35,10 @@ class TgmEvaluator:
 
         # internal
         self.data   = []
-        self.logger = get_logger(__name__)
 
-    def __load_qald_dataset(self, fn):
+    def __load_json_data(self, fn):
         """
-        Load QALD dataset (json file)
+        Load json data
 
         :param fn: filename
         :return: list of 3-tuples (NL question, answertype, SPARQL query)
@@ -48,11 +49,11 @@ class TgmEvaluator:
         # check extention
         bn, ext = os.path.splitext(os.path.basename(fn))
         if ext != '.json':
-            self.logger.warning('Input file "{}" is not a json file; skipping'.format(fn))
+            TgmEvaluator.logger.warning('Input file "{}" is not a json file; skipping'.format(fn))
             return qs
 
         # get data from json file
-        self.logger.info('Loading QALD dataset "{}"'.format(fn))
+        TgmEvaluator.logger.info('Loading a file "{}"'.format(fn))
         for e in json.load(open(fn)).get('questions', dict()):
             tmp_q, tmp_a, tmp_s = None, None, None
 
@@ -82,15 +83,21 @@ class TgmEvaluator:
         :return: json data including {"query", "score", "slots"}
         """
         tgm_in = '{{ "string": "{}", "language": "{}" }}'.format(question, self.lang)
-        r = requests.post(self.url, data=tgm_in)
-        return json.loads(r.text)
+        headers = {'content-type': 'application/json'}
+        r = requests.post(self.url, data=tgm_in, headers=headers)
+        if r.status_code == 200:
+            result = json.loads(r.text)
+            if isinstance(result, list):
+                result = result[0]
+        else:
+            result = {'message': r.text}
+        return (r.status_code, result)
 
-    def add_data(self, filenames, provider='qald'):
+    def add_data(self, filenames):
         """
         Add data in specified files
 
         :param filenames: list of dataset filenames
-        :param provider: (optional) name of dataset provider
         """
 
         for fn in filenames:
@@ -104,7 +111,7 @@ class TgmEvaluator:
                 tcf = cdir + '{}-{}.json'.format(bn, self.name)
 
                 if os.path.exists(tcf):
-                    self.logger.info('Loading a cache file "{}"'.format(tcf))
+                    TgmEvaluator.logger.info('Loading a cache "{}"'.format(tcf))
                     f = open(tcf, 'r')
                     tmp = json.load(f)
                     f.close()
@@ -112,29 +119,30 @@ class TgmEvaluator:
                     self.data.extend(tmp)
                     continue
 
-            # load qald dataset and run TGM
-            if provider == 'qald':
-                dataset = self.__load_qald_dataset(fn)
+            # load json data and run TGM
+            dataset = self.__load_json_data(fn)
             templates = [self.__run_tgm(d[0]) for d in dataset]
 
             tmp = [
                 {
-                    'qald': {
+                    'original': {
                         'question': d[0],
                         'type': d[1],
                         'query': d[2],
                     },
-                    self.name: {
-                        'query': t[0]['query'],
-                        'score': t[0]['score'],
-                        'slots': t[0]['slots']
+                    'tgm': {
+                        'status': t[0],
+                        'query': t[1].get('query', ''),
+                        'score': t[1].get('score', None),
+                        'slots': t[1].get('slots', []),
+                        'message': t[1].get('message', '')
                     }
                 }
                 for d, t in zip(dataset, templates)
             ]
 
             self.data.extend(tmp)
-            self.logger.info('Prepared {} queries from "{}"'.format(len(tmp), fn))
+            TgmEvaluator.logger.info('Prepared {} queries from "{}"'.format(len(tmp), fn))
 
             # write cache
             if self.cache:
@@ -142,7 +150,7 @@ class TgmEvaluator:
                 f.write(json.dumps(tmp, sort_keys=True, indent=4))
                 f.close()
 
-        self.logger.info('Current data size: {}'.format(len(self.data)))
+        TgmEvaluator.logger.info('Current data size: {}'.format(len(self.data)))
 
     def eval(self):
         """
@@ -151,15 +159,21 @@ class TgmEvaluator:
         :return: result dict
         """
 
-        result = {'type_errors': 0}
+        result = {'type_errors': 0, 'tgm_fail': 0}
 
         # patterns
         ask_query = re.compile('(ASK|ask)')
 
         for q in self.data:
+            # status
+            if q['tgm']['status'] != 200:
+                q['eval'] = { 'bad': 'tgm_fail', 'score': 0.0 }
+                result['tgm_fail'] += 1
+                continue
+
             # question type
-            yes_no = q['qald']['type'] == 'boolean'
-            ask    = not ask_query.search(q[self.name]['query']) is None
+            yes_no = q['original']['type'] == 'boolean'
+            ask    = not ask_query.search(q['tgm']['query']) is None
             if yes_no != ask:
                 q['eval'] = { 'bad': 'type_error', 'score': 0.0 }
                 result['type_errors'] += 1

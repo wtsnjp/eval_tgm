@@ -92,3 +92,8 @@ ENV/
 # temporary files
 *.json
 input/*
+
+# temporary dirs
+QALD/
+data/
+cache/

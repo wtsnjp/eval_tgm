@@ -7,28 +7,34 @@ import json
 
 from okbqa_evaluators.tgm_evaluator import TgmEvaluator
 
-def save_errors(data):
+def save_errors(name, data):
+    fn = './erros-{}.json'.format(name)
     errors = [q for q in data if q['eval']['score'] < 1.0]
-    f = open('./erros.json', 'w')
+    f = open(fn, 'w')
     f.write(json.dumps(errors, sort_keys=True, indent=4))
     f.close()
 
-def main():
-    fns      = sys.argv[1:]
-    tgm_name = 'rocknrole'
-    tgm_url  = 'http://ws.okbqa.org:1515/templategeneration/rocknrole'
+def eval_tgm(name, url, fns):
+    print('* Evaluating "{}"'.format(name))
 
     # prepare
-    evaluator = TgmEvaluator(tgm_name, tgm_url, cache=True)
+    evaluator = TgmEvaluator(name, url, cache=True)
     evaluator.add_data(fns)
 
     # evaluate
     result = evaluator.eval()
 
     # show results
-    for k, v in result.items():
-        print('{}: {}'.format(k, v))
-    #save_errors(evaluator.data)
+    for r in sorted(result.items(), key=lambda x: x[0]):
+        print('{}: {}'.format(r[0], r[1]))
+    save_errors(name, evaluator.data)
+
+def main():
+    fns = sys.argv[1:]
+
+    eval_tgm('rocknrole', 'http://ws.okbqa.org:1515/templategeneration/rocknrole', fns)
+    print()
+    eval_tgm('lodqa', 'http://52.199.182.91:38401/template.json', fns)
 
 if __name__ == '__main__':
     main()
