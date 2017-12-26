@@ -84,7 +84,10 @@ class TgmEvaluator:
         """
         tgm_in = '{{ "string": "{}", "language": "{}" }}'.format(question, self.lang)
         headers = {'content-type': 'application/json'}
-        r = requests.post(self.url, data=tgm_in, headers=headers)
+        try:
+            r = requests.post(self.url, data=tgm_in, headers=headers)
+        except UnicodeEncodeError:
+            return (-1, {'message': 'UnicodeEncodeError'})
         if r.status_code == 200:
             result = json.loads(r.text)
             if isinstance(result, list):
