@@ -10,6 +10,7 @@ import os
 import json
 import requests
 import re
+import subprocess
 
 class TgmEvaluator:
     """
@@ -80,21 +81,50 @@ class TgmEvaluator:
         Run TGM of OKBQA using REST API
 
         :param question: NL question
-        :return: json data including {"query", "score", "slots"}
+        :return: a 2-tuple (status code, json data)
         """
+
         tgm_in = '{{ "string": "{}", "language": "{}" }}'.format(question, self.lang)
         headers = {'content-type': 'application/json'}
+
         try:
             r = requests.post(self.url, data=tgm_in, headers=headers)
         except UnicodeEncodeError:
             return (-1, {'message': 'UnicodeEncodeError'})
+
         if r.status_code == 200:
             result = json.loads(r.text)
             if isinstance(result, list):
                 result = result[0]
         else:
             result = {'message': r.text}
+
         return (r.status_code, result)
+
+    def __run_qparse(self, origin_query, template):
+        """
+        Run arq.qparse
+
+        :param origin_query: SPARQL query from dataset
+        :param template: SPARQL template from TGM
+        :return: a 2-tuple (result of origin_query, result of template)
+        """
+
+        command = ['qparse', '--print=op', '--fixup']
+        result  = []
+
+        for q in (origin_query, template):
+            qpr = subprocess.run(command + [q], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+            result.append(
+                {
+                    'return': qpr.returncode,
+                    'algebra': qpr.stdout.decode(),
+                    'error': qpr.stderr.decode()
+                }
+            )
+
+        return result
 
     def add_data(self, filenames):
         """
@@ -123,12 +153,14 @@ class TgmEvaluator:
                     continue
 
             # load json data and run TGM
-            dataset = self.__load_json_data(fn)
+            dataset   = self.__load_json_data(fn)
             templates = [self.__run_tgm(d[0]) for d in dataset]
+            algebras  = [self.__run_qparse(d[2], t[1].get('query', ''))
+                         for d, t in zip(dataset, templates)]
 
             tmp = [
                 {
-                    'original': {
+                    'origin': {
                         'question': d[0],
                         'type': d[1],
                         'query': d[2],
@@ -139,9 +171,13 @@ class TgmEvaluator:
                         'score': t[1].get('score', None),
                         'slots': t[1].get('slots', []),
                         'message': t[1].get('message', '')
+                    },
+                    'qparse': {
+                        'origin': a[0],
+                        'template': a[1]
                     }
                 }
-                for d, t in zip(dataset, templates)
+                for d, t, a in zip(dataset, templates, algebras)
             ]
 
             self.data.extend(tmp)
@@ -162,7 +198,7 @@ class TgmEvaluator:
         :return: result dict
         """
 
-        result = {'type_errors': 0, 'tgm_fail': 0}
+        result = { 'type_errors': 0, 'tgm_fail': 0, 'syntax_error': 0 }
 
         # patterns
         ask_query = re.compile('(ASK|ask)')
@@ -174,8 +210,14 @@ class TgmEvaluator:
                 result['tgm_fail'] += 1
                 continue
 
+            # SPARQL syntax
+            if q['qparse']['template']['return'] != 0:
+                q['eval'] = { 'bad': 'syntax_error', 'score': 0.0 }
+                result['syntax_error'] += 1
+                continue
+
             # question type
-            yes_no = q['original']['type'] == 'boolean'
+            yes_no = q['origin']['type'] == 'boolean'
             ask    = not ask_query.search(q['tgm']['query']) is None
             if yes_no != ask:
                 q['eval'] = { 'bad': 'type_error', 'score': 0.0 }

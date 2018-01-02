@@ -33,8 +33,8 @@ def main():
     fns = sys.argv[1:]
 
     eval_tgm('rocknrole', 'http://ws.okbqa.org:1515/templategeneration/rocknrole', fns)
-    #print()
-    #eval_tgm('lodqa', 'http://52.199.182.91:38401/template.json', fns)
+    print()
+    eval_tgm('lodqa', 'http://lodqa.org/template.json', fns)
 
 if __name__ == '__main__':
     main()
