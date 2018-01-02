@@ -101,28 +101,23 @@ class TgmEvaluator:
 
         return (r.status_code, result)
 
-    def __run_qparse(self, origin_query, template):
+    def __run_qparse(self, query):
         """
         Run arq.qparse
 
-        :param origin_query: SPARQL query from dataset
-        :param template: SPARQL template from TGM
-        :return: a 2-tuple (result of origin_query, result of template)
+        :param query: SPARQL query (or template)
+        :return: result
         """
 
-        command = ['qparse', '--print=op', '--fixup']
-        result  = []
+        command = ['qparse', '--print=op', '--fixup', query]
 
-        for q in (origin_query, template):
-            qpr = subprocess.run(command + [q], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        qpr = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-            result.append(
-                {
-                    'return': qpr.returncode,
-                    'algebra': qpr.stdout.decode(),
-                    'error': qpr.stderr.decode()
-                }
-            )
+        result = {
+            'return': qpr.returncode,
+            'algebra': qpr.stdout.decode(),
+            'error': qpr.stderr.decode()
+        }
 
         return result
 
@@ -134,6 +129,8 @@ class TgmEvaluator:
         """
 
         for fn in filenames:
+            origin, tgm = None, None
+
             # use cache file if exists
             if self.cache:
                 cdir = './cache/'
@@ -141,53 +138,73 @@ class TgmEvaluator:
                     os.mkdir(cdir)
 
                 bn, ext = os.path.splitext(os.path.basename(fn))
+                ocf = cdir + '{}-origin.json'.format(bn)
                 tcf = cdir + '{}-{}.json'.format(bn, self.name)
+
+                if os.path.exists(ocf):
+                    TgmEvaluator.logger.info('Loading a cache "{}"'.format(ocf))
+                    f = open(ocf, 'r')
+                    origin = json.load(f)
+                    f.close()
 
                 if os.path.exists(tcf):
                     TgmEvaluator.logger.info('Loading a cache "{}"'.format(tcf))
                     f = open(tcf, 'r')
-                    tmp = json.load(f)
+                    tgm = json.load(f)
                     f.close()
 
-                    self.data.extend(tmp)
-                    continue
+            # get origin
+            if origin is None:
+                dataset  = self.__load_json_data(fn)
+                algebras = [self.__run_qparse(d[2]) for d in dataset]
 
-            # load json data and run TGM
-            dataset   = self.__load_json_data(fn)
-            templates = [self.__run_tgm(d[0]) for d in dataset]
-            algebras  = [self.__run_qparse(d[2], t[1].get('query', ''))
-                         for d, t in zip(dataset, templates)]
-
-            tmp = [
-                {
-                    'origin': {
-                        'question': d[0],
-                        'type': d[1],
-                        'query': d[2],
-                    },
-                    'tgm': {
-                        'status': t[0],
-                        'query': t[1].get('query', ''),
-                        'score': t[1].get('score', None),
-                        'slots': t[1].get('slots', []),
-                        'message': t[1].get('message', '')
-                    },
-                    'qparse': {
-                        'origin': a[0],
-                        'template': a[1]
+                origin = [
+                    {
+                        'origin': {
+                            'question': d[0],
+                            'type': d[1],
+                            'query': d[2],
+                        },
+                        'origin-qparse': a
                     }
-                }
-                for d, t, a in zip(dataset, templates, algebras)
-            ]
+                    for d, a in zip(dataset, algebras)
+                ]
 
+            # get tgm
+            if tgm is None:
+                templates = [self.__run_tgm(d['origin']['question']) for d in origin]
+                algebras  = [self.__run_qparse(t[1].get('query', '')) for t in templates]
+
+                tgm = [
+                    {
+                        'tgm': {
+                            'status': t[0],
+                            'query': t[1].get('query', ''),
+                            'score': t[1].get('score', None),
+                            'slots': t[1].get('slots', []),
+                            'message': t[1].get('message', '')
+                        },
+                        'tgm-qparse': a
+                    }
+                    for t, a in zip(templates, algebras)
+                ]
+
+            # add data
+            tmp = [{**o, **t} for o, t in zip(origin, tgm)]
             self.data.extend(tmp)
             TgmEvaluator.logger.info('Prepared {} queries from "{}"'.format(len(tmp), fn))
 
             # write cache
             if self.cache:
-                f = open(tcf, 'w')
-                f.write(json.dumps(tmp, sort_keys=True, indent=4))
-                f.close()
+                if not os.path.exists(ocf):
+                    f = open(ocf, 'w')
+                    f.write(json.dumps(origin, sort_keys=True, indent=4))
+                    f.close()
+
+                if not os.path.exists(tcf):
+                    f = open(tcf, 'w')
+                    f.write(json.dumps(tgm, sort_keys=True, indent=4))
+                    f.close()
 
         TgmEvaluator.logger.info('Current data size: {}'.format(len(self.data)))
 
@@ -211,7 +228,7 @@ class TgmEvaluator:
                 continue
 
             # SPARQL syntax
-            if q['qparse']['template']['return'] != 0:
+            if q['tgm-qparse']['return'] != 0:
                 q['eval'] = { 'bad': 'syntax_error', 'score': 0.0 }
                 result['syntax_error'] += 1
                 continue

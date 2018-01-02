@@ -15,15 +15,15 @@ def main():
         origin = [
             {
                 'origin': q['origin'],
-                'qparse': { 'origin': q['qparse']['origin'] }
+                'origin-qparse': q['qparse']['origin']
             }
             for q in data
         ]
 
         tgm = [
             {
-                'qparse': { 'template': q['qparse']['template'] },
-                'tgm': q['tgm']
+                'tgm': q['tgm'],
+                'tgm-qparse': q['qparse']['template']
             }
             for q in data
         ]
@@ -45,10 +45,10 @@ def main():
         f.close()
 
         # test
-        test = [{**o, **t} for o, t in zip(origin, tgm)]
-        f = open('test.json', 'w')
-        f.write(json.dumps(test, sort_keys=True, indent=4))
-        f.close()
+        #test = [{**o, **t} for o, t in zip(origin, tgm)]
+        #f = open('test.json', 'w')
+        #f.write(json.dumps(test, sort_keys=True, indent=4))
+        #f.close()
 
 if __name__ == '__main__':
     main()
