@@ -7,11 +7,17 @@ import json
 
 from okbqa_evaluators.tgm_evaluator import TgmEvaluator
 
-def save_errors(name, data):
-    fn = './erros-{}.json'.format(name)
+def dump_errors(name, data):
+    fn = './dump/{}-erros.json'.format(name)
     errors = [q for q in data if q['eval']['score'] < 1.0]
     f = open(fn, 'w')
     f.write(json.dumps(errors, sort_keys=True, indent=4))
+    f.close()
+
+def dump_all(name, data):
+    fn = './dump/{}-all.json'.format(name)
+    f = open(fn, 'w')
+    f.write(json.dumps(data, sort_keys=True, indent=4))
     f.close()
 
 def eval_tgm(name, url, fns):
@@ -27,7 +33,10 @@ def eval_tgm(name, url, fns):
     # show results
     for r in sorted(result.items(), key=lambda x: x[0]):
         print('{}: {}'.format(r[0], r[1]))
-    save_errors(name, evaluator.data)
+
+    # dump data
+    dump_errors(name, evaluator.data)
+    dump_all(name, evaluator.data)
 
 def main():
     fns = sys.argv[1:]

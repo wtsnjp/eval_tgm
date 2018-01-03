@@ -32,10 +32,10 @@ class TgmEvaluator:
         self.name  = name
         self.url   = url
         self.lang  = language
-        self.cache = cache
+        self.data   = []
 
         # internal
-        self.data   = []
+        self.__cache = cache
 
     def __load_json_data(self, fn):
         """
@@ -132,7 +132,7 @@ class TgmEvaluator:
             origin, tgm = None, None
 
             # use cache file if exists
-            if self.cache:
+            if self.__cache:
                 cdir = './cache/'
                 if not os.path.exists(cdir):
                     os.mkdir(cdir)
@@ -195,7 +195,7 @@ class TgmEvaluator:
             TgmEvaluator.logger.info('Prepared {} queries from "{}"'.format(len(tmp), fn))
 
             # write cache
-            if self.cache:
+            if self.__cache:
                 if not os.path.exists(ocf):
                     f = open(ocf, 'w')
                     f.write(json.dumps(origin, sort_keys=True, indent=4))
@@ -215,7 +215,7 @@ class TgmEvaluator:
         :return: result dict
         """
 
-        result = { 'type_errors': 0, 'tgm_fail': 0, 'syntax_error': 0 }
+        result = { 'internal_error': 0, 'type_error': 0, 'tgm_fail': 0, 'syntax_error': 0 }
 
         # patterns
         ask_query = re.compile('(ASK|ask)')
@@ -223,8 +223,13 @@ class TgmEvaluator:
         for q in self.data:
             # status
             if q['tgm']['status'] != 200:
-                q['eval'] = { 'bad': 'tgm_fail', 'score': 0.0 }
-                result['tgm_fail'] += 1
+                if q['tgm']['status'] == -1:
+                    q['eval'] = { 'bad': 'internal_error', 'score': 0.0 }
+                    result['internal_error'] += 1
+                else:
+                    q['eval'] = { 'bad': 'tgm_fail', 'score': 0.0 }
+                    result['tgm_fail'] += 1
+
                 continue
 
             # SPARQL syntax
@@ -238,7 +243,7 @@ class TgmEvaluator:
             ask    = not ask_query.search(q['tgm']['query']) is None
             if yes_no != ask:
                 q['eval'] = { 'bad': 'type_error', 'score': 0.0 }
-                result['type_errors'] += 1
+                result['type_error'] += 1
                 continue
 
             # all good
