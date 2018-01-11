@@ -17,7 +17,7 @@ class TgmEvaluator:
     Evaluator for specified TGM and language
     """
 
-    logger = get_logger('tgm_evaluator')
+    logger = get_logger('tgm_evaluator', debug=True)
 
     def __init__(self, name, url, language='en', cache=False):
         """
@@ -208,6 +208,30 @@ class TgmEvaluator:
 
         TgmEvaluator.logger.info('Current data size: {}'.format(len(self.data)))
 
+    def __parse_sse(self, sse):
+        """
+        Parse SSE
+
+        :param query: SPARQL algebra (SSE)
+        :return: 2-tuple (targets, triples)
+        """
+
+        sse = sse.replace('\n', '')
+        sse = re.sub(' +', ' ', sse)
+
+        m = re.search(r'\(project \((.*?)\)', sse)
+        if m:
+            targets = m.group(1).split(' ')
+        else:
+            targets = []
+
+        triples = [
+            { 's': m.group(1), 'p': m.group(2), 'o': m.group(3) }
+            for m in re.finditer(r'\(triple (.*?) (.*?) (.*?)\)', sse)
+        ]
+
+        return (targets, triples)
+
     def eval(self):
         """
         Evaluate the TGM
@@ -215,7 +239,15 @@ class TgmEvaluator:
         :return: result dict
         """
 
-        result = { 'internal_error': 0, 'type_error': 0, 'tgm_fail': 0, 'syntax_error': 0 }
+        result = {
+            'all': len(self.data),
+            'internal error': 0,
+            'type error (yes-no)': 0,
+            'type error (factoid)': 0,
+            'tgm fail': 0,
+            'syntax error': 0,
+            'non-connected target': 0
+        }
 
         # patterns
         ask_query = re.compile('(ASK|ask)')
@@ -224,27 +256,43 @@ class TgmEvaluator:
             # status
             if q['tgm']['status'] != 200:
                 if q['tgm']['status'] == -1:
-                    q['eval'] = { 'bad': 'internal_error', 'score': 0.0 }
-                    result['internal_error'] += 1
+                    q['eval'] = { 'bad': 'internal error', 'score': 0.0 }
+                    result['internal error'] += 1
                 else:
-                    q['eval'] = { 'bad': 'tgm_fail', 'score': 0.0 }
-                    result['tgm_fail'] += 1
+                    q['eval'] = { 'bad': 'tgm fail', 'score': 0.0 }
+                    result['tgm fail'] += 1
 
                 continue
 
             # SPARQL syntax
             if q['tgm-qparse']['return'] != 0:
-                q['eval'] = { 'bad': 'syntax_error', 'score': 0.0 }
-                result['syntax_error'] += 1
+                q['eval'] = { 'bad': 'syntax error', 'score': 0.0 }
+                result['syntax error'] += 1
                 continue
 
             # question type
             yes_no = q['origin']['type'] == 'boolean'
             ask    = not ask_query.search(q['tgm']['query']) is None
             if yes_no != ask:
-                q['eval'] = { 'bad': 'type_error', 'score': 0.0 }
-                result['type_error'] += 1
+                if yes_no:
+                    q['eval'] = { 'bad': 'type error (yes-no)', 'score': 0.0 }
+                    result['type error (yes-no)'] += 1
+                else:
+                    q['eval'] = { 'bad': 'type error (factoid)', 'score': 0.0 }
+                    result['type error (factoid)'] += 1
                 continue
+
+            # parse SSE
+            t_targets, t_triples = self.__parse_sse(q['tgm-qparse']['algebra'])
+            q['tgm-graph'] = { 'targets': t_targets, 'triples': t_triples }
+
+            # non-connected graph
+            if not ask:
+                nodes = [v for t in t_triples for v in t.values()]
+                if False in map(lambda t: t in nodes, t_targets):
+                    q['eval'] = { 'bad': 'non-connected target', 'score': 0.0 }
+                    result['non-connected target'] += 1
+                    continue
 
             # all good
             q['eval'] = { 'score': 1.0 }
