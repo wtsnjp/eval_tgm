@@ -5,7 +5,7 @@
 import sys
 import json
 
-from okbqa_evaluators.tgm_evaluator import TgmEvaluator
+from sqa_evaluator.tgm_evaluator import TgmEvaluator
 
 def dump_errors(name, data):
     fn = './dump/{}-erros.json'.format(name)
@@ -39,7 +39,7 @@ def eval_tgm(name, url, fns):
     dump_all(name, evaluator.data)
 
 def main():
-    fns = sys.argv[1:]
+    fns = list(reversed(sys.argv[1:]))
 
     eval_tgm('rocknrole', 'http://ws.okbqa.org:1515/templategeneration/rocknrole', fns)
     print()

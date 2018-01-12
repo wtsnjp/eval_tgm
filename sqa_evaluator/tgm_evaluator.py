@@ -4,20 +4,21 @@
 Module TGM Evaluator
 """
 
-from okbqa_evaluators import get_logger
+from sqa_evaluator import get_logger
 
 import os
 import json
 import requests
-import re
-import subprocess
+
+import pyparsing
+from rdflib.plugins import sparql
 
 class TgmEvaluator:
     """
     Evaluator for specified TGM and language
     """
 
-    logger = get_logger('tgm_evaluator', debug=True)
+    logger = get_logger('tgm_evaluator', debug=False)
 
     def __init__(self, name, url, language='en', cache=False):
         """
@@ -35,14 +36,25 @@ class TgmEvaluator:
         self.data   = []
 
         # internal
-        self.__cache = cache
+        self.__cache     = cache
+        self.__questions = set()
+
+        self.__ns = {
+            'rdf': 'http://xmlns.com/foaf/0.1/',
+            'reds': 'http://www.w3.org/2000/01/rdf-schema#',
+            'owl': 'http://www.w3.org/2002/07/owl#',
+            'xsd': 'http://www.w3.org/2001/XMLSchema#',
+            'dc': 'http://purl.org/dc/elements/1.1/',
+            'foaf': 'http://xmlns.com/foaf/0.1/',
+            'obo': 'http://purl.obolibrary.org/obo/'
+        }
 
     def __load_json_data(self, fn):
         """
         Load json data
 
         :param fn: filename
-        :return: list of 3-tuples (NL question, answertype, SPARQL query)
+        :return: result dict
         """
 
         qs = []
@@ -56,68 +68,81 @@ class TgmEvaluator:
         # get data from json file
         TgmEvaluator.logger.info('Loading a file "{}"'.format(fn))
         for e in json.load(open(fn)).get('questions', dict()):
-            tmp_q, tmp_a, tmp_s = None, None, None
+            tmp_q, tmp_s = None, None
 
-            # NL question
+            # NL query (question)
             for q in e.get('question', dict()):
                 if q.get('language', None) == self.lang:
                     tmp_q = q.get('string', None)
                     break
 
-            # answertype
-            tmp_a = e.get('answertype', None)
-
             # SPARQL query
             tmp_s = e.get('query', dict()).get('sparql', None)
 
-            # use only questions which have all of 3 attributes
-            if tmp_q and tmp_a and tmp_s:
-                qs.append((tmp_q, tmp_a, tmp_s))
+            # use only *good* questions
+            if tmp_q and tmp_s and not tmp_q in self.__questions:
+                qs.append({ 'nl_query': tmp_q, 'sparql': tmp_s })
+                self.__questions.add(tmp_q)
 
         return qs
 
-    def __run_tgm(self, question):
+    def __run_tgm(self, query):
         """
-        Run TGM of OKBQA using REST API
+        Run TGM using REST API
 
-        :param question: NL question
+        :param query: NL query
         :return: a 2-tuple (status code, json data)
         """
 
-        tgm_in = '{{ "string": "{}", "language": "{}" }}'.format(question, self.lang)
-        headers = {'content-type': 'application/json'}
+        tgm_in = '{{ "string": "{}", "language": "{}" }}'.format(query, self.lang)
+        headers = { 'content-type': 'application/json' }
 
         try:
             r = requests.post(self.url, data=tgm_in, headers=headers)
         except UnicodeEncodeError:
-            return (-1, {'message': 'UnicodeEncodeError'})
+            return (-1, { 'message': 'UnicodeEncodeError' })
 
         if r.status_code == 200:
             result = json.loads(r.text)
             if isinstance(result, list):
                 result = result[0]
         else:
-            result = {'message': r.text}
+            result = { 'message': r.text }
 
         return (r.status_code, result)
 
-    def __run_qparse(self, query):
+    def __parse_sparql(self, query):
         """
-        Run arq.qparse
+        Parse SPARQL with rdflib
 
         :param query: SPARQL query (or template)
-        :return: result
+        :return: result dict
         """
 
-        command = ['qparse', '--print=op', '--fixup', query]
+        try:
+            p = sparql.parser.parseQuery(query)
+            a = sparql.algebra.translateQuery(p, initNs=self.__ns).algebra
+        except pyparsing.ParseException as pe:
+            return { 'syntax_error': True, 'error_message': str(pe) }
 
-        qpr = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        result = { 'ask_query': False, 'triples': [] }
+        
+        def rec(p):
+            if isinstance(p, sparql.algebra.CompValue):
+                for k in p:
+                    yield (k, p[k])
+                    yield from rec(p[k])
 
-        result = {
-            'return': qpr.returncode,
-            'algebra': qpr.stdout.decode(),
-            'error': qpr.stderr.decode()
-        }
+        if a.name == 'AskQuery':
+            result['ask_query'] = True
+
+        for k, v in rec(a):
+            if k == 'triples':
+                result[k].extend([list(map(str, n)) for n in v])
+            elif k == 'PV':
+                result['targets'] = v
+            elif k in ('length', 'start'):
+                result[k] = v
 
         return result
 
@@ -155,25 +180,14 @@ class TgmEvaluator:
 
             # get origin
             if origin is None:
-                dataset  = self.__load_json_data(fn)
-                algebras = [self.__run_qparse(d[2]) for d in dataset]
-
-                origin = [
-                    {
-                        'origin': {
-                            'question': d[0],
-                            'type': d[1],
-                            'query': d[2],
-                        },
-                        'origin-qparse': a
-                    }
-                    for d, a in zip(dataset, algebras)
-                ]
+                dataset = self.__load_json_data(fn)
+                parsed  = [self.__parse_sparql(d['sparql']) for d in dataset]
+                origin  = [{'origin': d, 'origin_parsed': p} for d, p in zip(dataset, parsed)]
 
             # get tgm
             if tgm is None:
-                templates = [self.__run_tgm(d['origin']['question']) for d in origin]
-                algebras  = [self.__run_qparse(t[1].get('query', '')) for t in templates]
+                templates = [self.__run_tgm(d['origin']['nl_query']) for d in origin]
+                parsed    = [self.__parse_sparql(t[1].get('query', '')) for t in templates]
 
                 tgm = [
                     {
@@ -184,9 +198,9 @@ class TgmEvaluator:
                             'slots': t[1].get('slots', []),
                             'message': t[1].get('message', '')
                         },
-                        'tgm-qparse': a
+                        'tgm_parsed': p
                     }
-                    for t, a in zip(templates, algebras)
+                    for t, p in zip(templates, parsed)
                 ]
 
             # add data
@@ -208,30 +222,6 @@ class TgmEvaluator:
 
         TgmEvaluator.logger.info('Current data size: {}'.format(len(self.data)))
 
-    def __parse_sse(self, sse):
-        """
-        Parse SSE
-
-        :param query: SPARQL algebra (SSE)
-        :return: 2-tuple (targets, triples)
-        """
-
-        sse = sse.replace('\n', '')
-        sse = re.sub(' +', ' ', sse)
-
-        m = re.search(r'\(project \((.*?)\)', sse)
-        if m:
-            targets = m.group(1).split(' ')
-        else:
-            targets = []
-
-        triples = [
-            { 's': m.group(1), 'p': m.group(2), 'o': m.group(3) }
-            for m in re.finditer(r'\(triple (.*?) (.*?) (.*?)\)', sse)
-        ]
-
-        return (targets, triples)
-
     def eval(self):
         """
         Evaluate the TGM
@@ -242,15 +232,13 @@ class TgmEvaluator:
         result = {
             'all': len(self.data),
             'internal error': 0,
+            'broken origin': 0,
             'type error (yes-no)': 0,
             'type error (factoid)': 0,
             'tgm fail': 0,
             'syntax error': 0,
             'non-connected target': 0
         }
-
-        # patterns
-        ask_query = re.compile('(ASK|ask)')
 
         for q in self.data:
             # status
@@ -265,14 +253,30 @@ class TgmEvaluator:
                 continue
 
             # SPARQL syntax
-            if q['tgm-qparse']['return'] != 0:
+            if q['tgm_parsed'].get('syntax_error', False):
                 q['eval'] = { 'bad': 'syntax error', 'score': 0.0 }
                 result['syntax error'] += 1
                 continue
 
+            ask = q['tgm_parsed']['ask_query']
+
+            # non-connected graph
+            if not ask:
+                nodes = [v for t in q['tgm_parsed']['triples'] for v in t]
+                if False in map(lambda t: t in nodes, q['tgm_parsed']['targets']):
+                    q['eval'] = { 'bad': 'non-connected target', 'score': 0.0 }
+                    result['non-connected target'] += 1
+                    continue
+
+            # broken origin
+            if q['origin_parsed'].get('syntax_error', False):
+                q['eval'] = { 'bad': 'broken origin', 'score': 0.0 }
+                result['broken origin'] += 1
+                continue
+
+            yes_no = q['origin_parsed']['ask_query']
+
             # question type
-            yes_no = q['origin']['type'] == 'boolean'
-            ask    = not ask_query.search(q['tgm']['query']) is None
             if yes_no != ask:
                 if yes_no:
                     q['eval'] = { 'bad': 'type error (yes-no)', 'score': 0.0 }
@@ -281,18 +285,6 @@ class TgmEvaluator:
                     q['eval'] = { 'bad': 'type error (factoid)', 'score': 0.0 }
                     result['type error (factoid)'] += 1
                 continue
-
-            # parse SSE
-            t_targets, t_triples = self.__parse_sse(q['tgm-qparse']['algebra'])
-            q['tgm-graph'] = { 'targets': t_targets, 'triples': t_triples }
-
-            # non-connected graph
-            if not ask:
-                nodes = [v for t in t_triples for v in t.values()]
-                if False in map(lambda t: t in nodes, t_targets):
-                    q['eval'] = { 'bad': 'non-connected target', 'score': 0.0 }
-                    result['non-connected target'] += 1
-                    continue
 
             # all good
             q['eval'] = { 'score': 1.0 }
