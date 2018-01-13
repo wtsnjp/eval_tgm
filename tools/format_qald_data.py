@@ -8,10 +8,66 @@ import json
 
 from xml.etree import ElementTree as ET
 
-def format_qald1(qd):
-    print('There is no usefule data from QALD1')
+def check_sparql(s):
+    if s is None or s == 'OUT OF SCOPE':
+        return False
+    return True
 
-def format_qald2(qd):
+def qdict(string, sparql):
+    return {
+        'question': [{ 'language': 'en', 'string': string }],
+        'query': { 'sparql': sparql }
+    }
+
+def xml_find_en_string(qn):
+    for s in qn.findall('string'):
+        if s.get('lang') == 'en':
+            return s
+
+def json_find_en_string(qs):
+    for q in qs:
+        if q['language'] == 'en':
+            return q['string']
+
+def write_file(wd, fn, qs):
+    if not os.path.exists(wd):
+        os.mkdir(wd)
+
+    twf = wd + fn
+
+    f = open(twf, 'w')
+    f.write(json.dumps({'questions': qs}, sort_keys=True, indent=4))
+    f.close()
+
+
+def format_qald1(wd, qd):
+    noq    = 0
+    ddir   = '1/data/'
+    dfiles = [
+        'dbpedia-test.xml',
+        'dbpedia-train.xml',
+        'musicbrainz-test.xml',
+        'musicbrainz-train.xml',
+    ]
+
+    for fn in dfiles:
+        path = qd + ddir + fn
+        bn, ext = os.path.splitext(os.path.basename(fn))
+
+        # parse XML
+        root = ET.parse(path).getroot()
+        qs = [
+            qdict(q.find('string').text.strip(), q.find('query').text.strip())
+            for q in root.findall('.//question')
+            if check_sparql(q.find('query').text.strip())
+        ]
+        noq += len(qs)
+
+        write_file(wd, 'qald-1-{}.json'.format(bn), qs)
+
+    print('Prepared {} questions from QALD-1'.format(noq))
+
+def format_qald2(wd, qd):
     noq    = 0
     ddir   = '2/data/'
     dfiles = [
@@ -29,36 +85,17 @@ def format_qald2(qd):
         # parse XML
         root = ET.parse(path).getroot()
         qs = [
-            {
-                'answertype': q.get('answertype'),
-                'question': [
-                    {
-                        'language': 'en',
-                        'string': q.find('string').text.strip()
-                    }
-                ],
-                'query': {
-                    'sparql': q.find('query').text.strip()
-                }
-            }
+            qdict(q.find('string').text.strip(), q.find('query').text.strip())
             for q in root.findall('.//question')
+            if check_sparql(q.find('query').text.strip())
         ]
         noq += len(qs)
 
-        # write
-        wdir = './data/'
-        if not os.path.exists(wdir):
-            os.mkdir(wdir)
+        write_file(wd, 'qald-2-{}.json'.format(bn), qs)
 
-        twf = wdir + 'qald-2-{}.json'.format(bn)
+    print('Prepared {} questions from QALD-2'.format(noq))
 
-        f = open(twf, 'w')
-        f.write(json.dumps({'questions': qs}, sort_keys=True, indent=4))
-        f.close()
-
-    print('Prepared {} questions from QALD2'.format(noq))
-
-def format_qald3(qd):
+def format_qald3(wd, qd):
     noq    = 0
     ddir   = '3/data/'
     dfiles = [
@@ -75,43 +112,19 @@ def format_qald3(qd):
         bn, ext = os.path.splitext(os.path.basename(fn))
 
         # parse XML
-        def find_string(qn):
-            for s in qn.findall('string'):
-                if s.get('lang') == 'en':
-                    return s
-
         root = ET.parse(path).getroot()
         qs = [
-            {
-                'answertype': q.get('answertype'),
-                'question': [
-                    {
-                        'language': 'en',
-                        'string': find_string(q).text.strip()
-                    }
-                ],
-                'query': {
-                    'sparql': q.find('query').text.strip()
-                }
-            }
+            qdict(xml_find_en_string(q).text.strip(), q.find('query').text.strip())
             for q in root.findall('.//question')
+            if check_sparql(q.find('query').text.strip())
         ]
         noq += len(qs)
 
-        # write
-        wdir = './data/'
-        if not os.path.exists(wdir):
-            os.mkdir(wdir)
+        write_file(wd, 'qald-3-{}.json'.format(bn), qs)
 
-        twf = wdir + 'qald-3-{}.json'.format(bn)
+    print('Prepared {} questions from QALD-3'.format(noq))
 
-        f = open(twf, 'w')
-        f.write(json.dumps({'questions': qs}, sort_keys=True, indent=4))
-        f.close()
-
-    print('Prepared {} questions from QALD3'.format(noq))
-
-def format_qald4(qd):
+def format_qald4(wd, qd):
     noq    = 0
     ddir   = '4/data/'
     dfiles = [
@@ -124,43 +137,19 @@ def format_qald4(qd):
         bn, ext = os.path.splitext(os.path.basename(fn))
 
         # parse XML
-        def find_string(qn):
-            for s in qn.findall('string'):
-                if s.get('lang') == 'en':
-                    return s
-
         root = ET.parse(path).getroot()
         qs = [
-            {
-                'answertype': q.get('answertype'),
-                'question': [
-                    {
-                        'language': 'en',
-                        'string': find_string(q).text.strip()
-                    }
-                ],
-                'query': {
-                    'sparql': q.find('query').text.strip()
-                }
-            }
+            qdict(xml_find_en_string(q).text.strip(), q.find('query').text.strip())
             for q in root.findall('.//question')
+            if check_sparql(q.find('query').text.strip())
         ]
         noq += len(qs)
 
-        # write
-        wdir = './data/'
-        if not os.path.exists(wdir):
-            os.mkdir(wdir)
+        write_file(wd, '{}.json'.format(bn.replace('_', '-')), qs)
 
-        twf = wdir + '{}.json'.format(bn.replace('_', '-'))
+    print('Prepared {} questions from QALD-4'.format(noq))
 
-        f = open(twf, 'w')
-        f.write(json.dumps({'questions': qs}, sort_keys=True, indent=4))
-        f.close()
-
-    print('Prepared {} questions from QALD4'.format(noq))
-
-def format_qald5(qd):
+def format_qald5(wd, qd):
     noq    = 0
     ddir   = '5/data/'
     dfiles = [
@@ -173,44 +162,19 @@ def format_qald5(qd):
         bn, ext = os.path.splitext(os.path.basename(fn))
 
         # parse XML
-        def find_string(qn):
-            for s in qn.findall('string'):
-                if s.get('lang') == 'en':
-                    return s
-
         root = ET.parse(path).getroot()
         qs = [
-            {
-                'answertype': q.get('answertype'),
-                'question': [
-                    {
-                        'language': 'en',
-                        'string': find_string(q).text.strip()
-                    }
-                ],
-                'query': {
-                    'sparql': q.find('query').text.strip()
-                }
-            }
+            qdict(xml_find_en_string(q).text.strip(), q.find('query').text.strip())
             for q in root.findall('.//question')
-            if not q.find('query') is None
+            if not q.find('query') is None and check_sparql(q.find('query').text.strip())
         ]
         noq += len(qs)
 
-        # write
-        wdir = './data/'
-        if not os.path.exists(wdir):
-            os.mkdir(wdir)
+        write_file(wd, '{}.json'.format(bn.replace('_', '-')), qs)
 
-        twf = wdir + '{}.json'.format(bn.replace('_', '-'))
+    print('Prepared {} questions from QALD-5'.format(noq))
 
-        f = open(twf, 'w')
-        f.write(json.dumps({'questions': qs}, sort_keys=True, indent=4))
-        f.close()
-
-    print('Prepared {} questions from QALD5'.format(noq))
-
-def format_qald6(qd):
+def format_qald6(wd, qd):
     noq    = 0
     ddir   = '6/data/'
     dfiles = [
@@ -222,23 +186,18 @@ def format_qald6(qd):
         path = qd + ddir + fn
 
         # parse json
-        qs = json.load(open(path))
-        noq += len(qs['questions'])
+        qs = [
+            qdict(json_find_en_string(q['question']), q['query']['sparql'])
+            for q in json.load(open(path))['questions']
+            if check_sparql(q['query'].get('sparql', None))
+        ]
+        noq += len(qs)
 
-        # write
-        wdir = './data/'
-        if not os.path.exists(wdir):
-            os.mkdir(wdir)
+        write_file(wd, fn, qs)
 
-        twf = wdir + fn
+    print('Prepared {} questions from QALD-6'.format(noq))
 
-        f = open(twf, 'w')
-        f.write(json.dumps(qs, sort_keys=True, indent=4))
-        f.close()
-
-    print('Prepared {} questions from QALD6'.format(noq))
-
-def format_qald7(qd):
+def format_qald7(wd, qd):
     noq    = 0
     ddir   = '7/data/'
     dfiles = [
@@ -253,32 +212,28 @@ def format_qald7(qd):
         path = qd + ddir + fn
 
         # parse json
-        qs = json.load(open(path))
-        noq += len(qs['questions'])
+        qs = [
+            qdict(json_find_en_string(q['question']), q['query']['sparql'])
+            for q in json.load(open(path))['questions']
+            if check_sparql(q['query']['sparql'])
+        ]
+        noq += len(qs)
 
-        # write
-        wdir = './data/'
-        if not os.path.exists(wdir):
-            os.mkdir(wdir)
+        write_file(wd, fn, qs)
 
-        twf = wdir + fn
-
-        f = open(twf, 'w')
-        f.write(json.dumps(qs, sort_keys=True, indent=4))
-        f.close()
-
-    print('Prepared {} questions from QALD7'.format(noq))
+    print('Prepared {} questions from QALD-7'.format(noq))
 
 def main():
     qald_dir = sys.argv[1]
+    data_dir = './data/'
 
-    format_qald1(qald_dir)
-    format_qald2(qald_dir)
-    format_qald3(qald_dir)
-    format_qald4(qald_dir)
-    format_qald5(qald_dir)
-    format_qald6(qald_dir)
-    format_qald7(qald_dir)
+    format_qald1(data_dir, qald_dir)
+    format_qald2(data_dir, qald_dir)
+    format_qald3(data_dir, qald_dir)
+    format_qald4(data_dir, qald_dir)
+    format_qald5(data_dir, qald_dir)
+    format_qald6(data_dir, qald_dir)
+    format_qald7(data_dir, qald_dir)
 
 if __name__ == '__main__':
     main()
