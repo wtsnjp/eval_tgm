@@ -18,9 +18,18 @@ class TgmEvaluator:
     Evaluator for specified TGM and language
     """
 
-    logger = get_logger('tgm_evaluator', debug=False)
+    logger     = get_logger('tgm_evaluator', debug=False)
+    default_ns = {
+        'rdf': 'http://xmlns.com/foaf/0.1/',
+        'reds': 'http://www.w3.org/2000/01/rdf-schema#',
+        'owl': 'http://www.w3.org/2002/07/owl#',
+        'xsd': 'http://www.w3.org/2001/XMLSchema#',
+        'dc': 'http://purl.org/dc/elements/1.1/',
+        'foaf': 'http://xmlns.com/foaf/0.1/',
+        'obo': 'http://purl.obolibrary.org/obo/'
+    }
 
-    def __init__(self, name, url, language='en', cache=False):
+    def __init__(self, name, url, language='en', cache=False, ns=dict()):
         """
         Initialize TGM Evaluator
 
@@ -33,21 +42,13 @@ class TgmEvaluator:
         self.name  = name
         self.url   = url
         self.lang  = language
-        self.data   = []
+        self.data  = []
 
         # internal
         self.__cache     = cache
         self.__questions = set()
-
-        self.__ns = {
-            'rdf': 'http://xmlns.com/foaf/0.1/',
-            'reds': 'http://www.w3.org/2000/01/rdf-schema#',
-            'owl': 'http://www.w3.org/2002/07/owl#',
-            'xsd': 'http://www.w3.org/2001/XMLSchema#',
-            'dc': 'http://purl.org/dc/elements/1.1/',
-            'foaf': 'http://xmlns.com/foaf/0.1/',
-            'obo': 'http://purl.obolibrary.org/obo/'
-        }
+        self.__ns        = TgmEvaluator.default_ns
+        self.__ns.update(ns)
 
     def __load_json_data(self, fn):
         """
@@ -91,7 +92,7 @@ class TgmEvaluator:
         Run TGM using REST API
 
         :param query: NL query
-        :return: a 2-tuple (status code, json data)
+        :return: result dict
         """
 
         tgm_in = '{{ "string": "{}", "language": "{}" }}'.format(query, self.lang)
@@ -100,16 +101,22 @@ class TgmEvaluator:
         try:
             r = requests.post(self.url, data=tgm_in, headers=headers)
         except UnicodeEncodeError:
-            return (-1, { 'message': 'UnicodeEncodeError' })
+            return { 'internal_error': True }
 
         if r.status_code == 200:
-            result = json.loads(r.text)
-            if isinstance(result, list):
-                result = result[0]
+            raw = json.loads(r.text)
+            if isinstance(raw, list):
+                result = raw[0]
+                result['length'] = len(raw)
+            else:
+                result = raw
+                result['length'] = 1
         else:
             result = { 'message': r.text }
 
-        return (r.status_code, result)
+        result['status'] = r.status_code
+
+        return result
 
     def __parse_sparql(self, query):
         """
@@ -140,7 +147,7 @@ class TgmEvaluator:
             if k == 'triples':
                 result[k].extend([list(map(str, n)) for n in v])
             elif k == 'PV':
-                result['targets'] = v
+                result['targets'] = [str(t) for t in v]
             elif k in ('length', 'start'):
                 result[k] = v
 
@@ -182,31 +189,17 @@ class TgmEvaluator:
             if origin is None:
                 dataset = self.__load_json_data(fn)
                 parsed  = [self.__parse_sparql(d['sparql']) for d in dataset]
-                origin  = [{'origin': d, 'origin_parsed': p} for d, p in zip(dataset, parsed)]
+                origin  = [{ 'origin': d, 'origin_parsed': p } for d, p in zip(dataset, parsed)]
 
             # get tgm
             if tgm is None:
                 templates = [self.__run_tgm(d['origin']['nl_query']) for d in origin]
-                parsed    = [self.__parse_sparql(t[1].get('query', '')) for t in templates]
-
-                tgm = [
-                    {
-                        'tgm': {
-                            'status': t[0],
-                            'query': t[1].get('query', ''),
-                            'score': t[1].get('score', None),
-                            'slots': t[1].get('slots', []),
-                            'message': t[1].get('message', '')
-                        },
-                        'tgm_parsed': p
-                    }
-                    for t, p in zip(templates, parsed)
-                ]
+                parsed    = [self.__parse_sparql(t.get('query', '')) for t in templates]
+                tgm       = [{ 'tgm': t, 'tgm_parsed': p } for t, p in zip(templates, parsed)]
 
             # add data
-            tmp = [{**o, **t} for o, t in zip(origin, tgm)]
-            self.data.extend(tmp)
-            TgmEvaluator.logger.info('Prepared {} queries from "{}"'.format(len(tmp), fn))
+            self.data.extend([{**o, **t} for o, t in zip(origin, tgm)])
+            TgmEvaluator.logger.info('Prepared {} queries from "{}"'.format(len(tgm), fn))
 
             # write cache
             if self.__cache:
@@ -241,15 +234,16 @@ class TgmEvaluator:
         }
 
         for q in self.data:
+            # internal
+            if q['tgm'].get('internal_error', False):
+                q['eval'] = { 'bad': 'internal error', 'score': 0.0 }
+                result['internal error'] += 1
+                continue
+
             # status
             if q['tgm']['status'] != 200:
-                if q['tgm']['status'] == -1:
-                    q['eval'] = { 'bad': 'internal error', 'score': 0.0 }
-                    result['internal error'] += 1
-                else:
-                    q['eval'] = { 'bad': 'tgm fail', 'score': 0.0 }
-                    result['tgm fail'] += 1
-
+                q['eval'] = { 'bad': 'tgm fail', 'score': 0.0 }
+                result['tgm fail'] += 1
                 continue
 
             # SPARQL syntax
