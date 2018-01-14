@@ -9,7 +9,7 @@ from sqa_evaluator.tgm_evaluator import TgmEvaluator
 
 def dump_errors(name, data):
     fn = './dump/{}-erros.json'.format(name)
-    errors = [q for q in data if q['eval']['score'] < 1.0]
+    errors = [q for q in data if q['eval'].get('error', False)]
     f = open(fn, 'w')
     f.write(json.dumps(errors, sort_keys=True, indent=4))
     f.close()
@@ -23,16 +23,19 @@ def dump_all(name, data):
 def eval_tgm(name, url, fns):
     print('* Evaluating "{}"'.format(name))
 
-    # prepare
     evaluator = TgmEvaluator(name, url, cache=True)
-    evaluator.add_data(fns)
 
-    # evaluate
-    result = evaluator.eval()
+    evaluator.add_data(fns)
+    evaluator.eval()
 
     # show results
-    for r in sorted(result.items(), key=lambda x: x[0]):
-        print('{}: {}'.format(r[0], r[1]))
+    print('Infomaion:')
+    for r in sorted(evaluator.result['info'].items(), key=lambda x: x[0]):
+        print('  {}: {}'.format(r[0], r[1]))
+
+    print('Errors:')
+    for r in sorted(evaluator.result['error'].items(), key=lambda x: x[0]):
+        print('  {}: {}'.format(r[0], r[1]))
 
     # dump data
     dump_errors(name, evaluator.data)

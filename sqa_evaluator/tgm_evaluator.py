@@ -26,7 +26,8 @@ class TgmEvaluator:
         'xsd': 'http://www.w3.org/2001/XMLSchema#',
         'dc': 'http://purl.org/dc/elements/1.1/',
         'foaf': 'http://xmlns.com/foaf/0.1/',
-        'obo': 'http://purl.obolibrary.org/obo/'
+        'obo': 'http://purl.obolibrary.org/obo/',
+        'res': 'http://dbpedia.org/resource/',
     }
 
     def __init__(self, name, url, language='en', cache=False, ns=dict()):
@@ -82,7 +83,7 @@ class TgmEvaluator:
 
             # use only *good* questions
             if tmp_q and tmp_s and not tmp_q in self.__questions:
-                qs.append({ 'nl_query': tmp_q, 'sparql': tmp_s })
+                qs.append({ 'nl_query': tmp_q, 'sparql': tmp_s, 'source': bn + ext })
                 self.__questions.add(tmp_q)
 
         return qs
@@ -95,11 +96,11 @@ class TgmEvaluator:
         :return: result dict
         """
 
-        tgm_in = '{{ "string": "{}", "language": "{}" }}'.format(query, self.lang)
+        tgm_in = { 'string': query, 'language': self.lang }
         headers = { 'content-type': 'application/json' }
 
         try:
-            r = requests.post(self.url, data=tgm_in, headers=headers)
+            r = requests.post(self.url, headers=headers, data=json.dumps(tgm_in).encode('utf-8'))
         except UnicodeEncodeError:
             return { 'internal_error': True }
 
@@ -215,6 +216,10 @@ class TgmEvaluator:
 
         TgmEvaluator.logger.info('Current data size: {}'.format(len(self.data)))
 
+    def __update_result(self, reason, level='error'):
+        self.result[level][reason] += 1
+        return { level: reason }
+
     def eval(self):
         """
         Evaluate the TGM
@@ -222,34 +227,44 @@ class TgmEvaluator:
         :return: result dict
         """
 
-        result = {
-            'all': len(self.data),
-            'internal error': 0,
-            'broken origin': 0,
-            'type error (yes-no)': 0,
-            'type error (factoid)': 0,
-            'tgm fail': 0,
-            'syntax error': 0,
-            'non-connected target': 0
+        self.result = {
+            'info': {
+                'all': len(self.data),
+                'internal error': 0,
+                'broken origin': 0,
+            },
+            'error': {
+                'question type (yes-no)': 0,
+                'question type (factoid)': 0,
+                'tgm fail': 0,
+                'syntax': 0,
+                'non-connected target': 0
+            }
         }
 
         for q in self.data:
+            # initialize
+            q['eval'] = dict()
+
+            # broken origin
+            broken = False
+            if q['origin_parsed'].get('syntax_error', False):
+                q['eval'].update(self.__update_result('broken origin', level='info'))
+                broken = True
+
             # internal
             if q['tgm'].get('internal_error', False):
-                q['eval'] = { 'bad': 'internal error', 'score': 0.0 }
-                result['internal error'] += 1
+                q['eval'].update(self.__update_result('internal error', level='info'))
                 continue
 
             # status
             if q['tgm']['status'] != 200:
-                q['eval'] = { 'bad': 'tgm fail', 'score': 0.0 }
-                result['tgm fail'] += 1
+                q['eval'].update(self.__update_result('tgm fail'))
                 continue
 
             # SPARQL syntax
             if q['tgm_parsed'].get('syntax_error', False):
-                q['eval'] = { 'bad': 'syntax error', 'score': 0.0 }
-                result['syntax error'] += 1
+                q['eval'].update(self.__update_result('syntax'))
                 continue
 
             ask = q['tgm_parsed']['ask_query']
@@ -258,14 +273,10 @@ class TgmEvaluator:
             if not ask:
                 nodes = [v for t in q['tgm_parsed']['triples'] for v in t]
                 if False in map(lambda t: t in nodes, q['tgm_parsed']['targets']):
-                    q['eval'] = { 'bad': 'non-connected target', 'score': 0.0 }
-                    result['non-connected target'] += 1
+                    q['eval'].update(self.__update_result('non-connected target'))
                     continue
 
-            # broken origin
-            if q['origin_parsed'].get('syntax_error', False):
-                q['eval'] = { 'bad': 'broken origin', 'score': 0.0 }
-                result['broken origin'] += 1
+            if broken:
                 continue
 
             yes_no = q['origin_parsed']['ask_query']
@@ -273,14 +284,10 @@ class TgmEvaluator:
             # question type
             if yes_no != ask:
                 if yes_no:
-                    q['eval'] = { 'bad': 'type error (yes-no)', 'score': 0.0 }
-                    result['type error (yes-no)'] += 1
+                    q['eval'].update(self.__update_result('question type (yes-no)'))
                 else:
-                    q['eval'] = { 'bad': 'type error (factoid)', 'score': 0.0 }
-                    result['type error (factoid)'] += 1
+                    q['eval'].update(self.__update_result('question type (factoid)'))
                 continue
 
             # all good
-            q['eval'] = { 'score': 1.0 }
-
-        return result
+            q['eval']['info'] = 'all good'
