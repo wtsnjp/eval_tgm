@@ -2,18 +2,39 @@
 # usage: python format_qald_data.py {qald directory}
 #
 
+import re
 import os
 import sys
 import json
 
 from xml.etree import ElementTree as ET
 
+# questions should be removed
+bad = ['Are the members of the Ramones that are not called Ramone?']
+
+# patterns
+spaces       = re.compile(r'\s+')
+minus        = re.compile(r'SELECT DISTINCT \(\?h1-\?h2\) WHERE')
+regex        = re.compile(r' FILTER \(NOT regex\(\?artistname,"Ramone"\)\)')
+asas         = re.compile(r'(AS|as) \?number AS \?result')
+count_before = re.compile(r'SELECT( DISTINCT|) COUNT(.*) WHERE \{')
+
 def check_sparql(s):
-    if s is None or s == 'OUT OF SCOPE':
+    if s is None or s.strip() == 'OUT OF SCOPE':
         return False
     return True
 
 def qdict(string, sparql):
+    # normalize string
+    string = string.strip()
+
+    # normalize sparql
+    sparql = spaces.sub(' ', sparql).strip()
+    sparql = minus.sub('SELECT DISTINCT ((?h1 - ?h2) AS ?tgm_eval_result) WHERE', sparql)
+    sparql = regex.sub(' FILTER (!(REGEX(?artistname, "Ramone")))', sparql)
+    sparql = count_before.sub(r'SELECT (COUNT \2 AS ?result) WHERE {', sparql)
+    sparql = asas.sub('AS ?number', sparql)
+
     return {
         'question': [{ 'language': 'en', 'string': string }],
         'query': { 'sparql': sparql }
@@ -57,9 +78,9 @@ def format_qald1(wd, qd):
         # parse XML
         root = ET.parse(path).getroot()
         qs = [
-            qdict(q.find('string').text.strip(), q.find('query').text.strip())
+            qdict(q.find('string').text, q.find('query').text)
             for q in root.findall('.//question')
-            if check_sparql(q.find('query').text.strip())
+            if check_sparql(q.find('query').text) and not (q.find('string').text.strip() in bad)
         ]
         noq += len(qs)
 
@@ -85,9 +106,9 @@ def format_qald2(wd, qd):
         # parse XML
         root = ET.parse(path).getroot()
         qs = [
-            qdict(q.find('string').text.strip(), q.find('query').text.strip())
+            qdict(q.find('string').text, q.find('query').text)
             for q in root.findall('.//question')
-            if check_sparql(q.find('query').text.strip())
+            if check_sparql(q.find('query').text)
         ]
         noq += len(qs)
 
@@ -114,9 +135,9 @@ def format_qald3(wd, qd):
         # parse XML
         root = ET.parse(path).getroot()
         qs = [
-            qdict(xml_find_en_string(q).text.strip(), q.find('query').text.strip())
+            qdict(xml_find_en_string(q).text, q.find('query').text)
             for q in root.findall('.//question')
-            if check_sparql(q.find('query').text.strip())
+            if check_sparql(q.find('query').text)
         ]
         noq += len(qs)
 
@@ -139,9 +160,9 @@ def format_qald4(wd, qd):
         # parse XML
         root = ET.parse(path).getroot()
         qs = [
-            qdict(xml_find_en_string(q).text.strip(), q.find('query').text.strip())
+            qdict(xml_find_en_string(q).text, q.find('query').text)
             for q in root.findall('.//question')
-            if check_sparql(q.find('query').text.strip())
+            if check_sparql(q.find('query').text)
         ]
         noq += len(qs)
 
@@ -164,9 +185,9 @@ def format_qald5(wd, qd):
         # parse XML
         root = ET.parse(path).getroot()
         qs = [
-            qdict(xml_find_en_string(q).text.strip(), q.find('query').text.strip())
+            qdict(xml_find_en_string(q).text, q.find('query').text)
             for q in root.findall('.//question')
-            if not q.find('query') is None and check_sparql(q.find('query').text.strip())
+            if not q.find('query') is None and check_sparql(q.find('query').text)
         ]
         noq += len(qs)
 
