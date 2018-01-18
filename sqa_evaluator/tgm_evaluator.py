@@ -133,7 +133,7 @@ class TgmEvaluator:
         except pyparsing.ParseException as pe:
             return { 'syntax_error': True, 'error_message': str(pe) }
 
-        result = { 'ask_query': False, 'triples': [] }
+        result  = { 'ask_query': False, 'triples': [], 'binds': dict() }
         
         def rec(p):
             if isinstance(p, sparql.algebra.CompValue):
@@ -144,13 +144,22 @@ class TgmEvaluator:
         if a.name == 'AskQuery':
             result['ask_query'] = True
 
+        var1, var2 = False, False
+
         for k, v in rec(a):
             if k == 'triples':
                 result[k].extend([list(map(str, n)) for n in v])
             elif k == 'PV':
                 result['targets'] = [str(t) for t in v]
+            elif k == 'var':
+                var1 = str(v)
+            elif k == 'A':
+                var2 = str(v[0].vars)
             elif k in ('length', 'start'):
                 result[k] = v
+
+        if var1 and var2:
+            result['binds'][var1] = var2
 
         return result
 
@@ -272,7 +281,8 @@ class TgmEvaluator:
             # non-connected graph
             if not ask:
                 nodes = [v for t in q['tgm_parsed']['triples'] for v in t]
-                if False in map(lambda t: t in nodes, q['tgm_parsed']['targets']):
+                targets = [q['tgm_parsed']['binds'].get(t, t) for t in q['tgm_parsed']['targets']]
+                if False in map(lambda t: t in nodes, targets):
                     q['eval'].update(self.__update_result('non-connected target'))
                     continue
 
