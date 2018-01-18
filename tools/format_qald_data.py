@@ -32,7 +32,7 @@ def qdict(string, sparql):
     sparql = spaces.sub(' ', sparql).strip()
     sparql = minus.sub('SELECT DISTINCT ((?h1 - ?h2) AS ?tgm_eval_result) WHERE', sparql)
     sparql = regex.sub(' FILTER (!(REGEX(?artistname, "Ramone")))', sparql)
-    sparql = count_before.sub(r'SELECT (COUNT \2 AS ?result) WHERE {', sparql)
+    sparql = count_before.sub(r'SELECT (COUNT \2 AS ?tgm_eval_result) WHERE {', sparql)
     sparql = asas.sub('AS ?number', sparql)
 
     return {
@@ -149,6 +149,8 @@ def format_qald4(wd, qd):
     noq    = 0
     ddir   = '4/data/'
     dfiles = [
+        'qald-4_biomedical_test.xml',
+        'qald-4_biomedical_train.xml',
         'qald-4_multilingual_test.xml',
         'qald-4_multilingual_train.xml'
     ]
@@ -191,7 +193,7 @@ def format_qald5(wd, qd):
         ]
         noq += len(qs)
 
-        write_file(wd, '{}.json'.format(bn.replace('_', '-')), qs)
+        write_file(wd, 'qald-5-multilingual-{}.json'.format(bn.split('_')[1]), qs)
 
     print('Prepared {} questions from QALD-5'.format(noq))
 
@@ -214,7 +216,7 @@ def format_qald6(wd, qd):
         ]
         noq += len(qs)
 
-        write_file(wd, fn, qs)
+        write_file(wd, re.sub(r'(-test|-train)(.+)\.json', r'\2\1.json', fn), qs)
 
     print('Prepared {} questions from QALD-6'.format(noq))
 
@@ -240,7 +242,7 @@ def format_qald7(wd, qd):
         ]
         noq += len(qs)
 
-        write_file(wd, fn, qs)
+        write_file(wd, re.sub(r'(-test|-train)(.+)\.json', r'\2\1.json', fn), qs)
 
     print('Prepared {} questions from QALD-7'.format(noq))
 
