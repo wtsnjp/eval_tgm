@@ -243,6 +243,9 @@ class TgmEvaluator:
                 'all': len(self.data),
                 'internal error': 0,
                 'broken origin': 0,
+                'yes-no question': 0,
+                'factoid question': 0,
+                'list question': 0
             },
             'critical': {
                 'question type (yes-no)': 0,
@@ -252,6 +255,12 @@ class TgmEvaluator:
                 'non-connected target': 0
             },
             'notice': {
+                'wrong range': 0
+            },
+            'ok': {
+                'question type (yes-no)': 0,
+                'question type (factoid)': 0,
+                'non-connected target': 0,
                 'wrong range': 0
             }
         }
@@ -270,6 +279,18 @@ class TgmEvaluator:
                 self.__update(i, 'info', 'broken origin')
                 broken = True
 
+            # collect origin info
+            if not broken:
+                yes_no = op['ask_query']
+                if yes_no:
+                    self.result['info']['yes-no question'] += 1
+                else:
+                    self.result['info']['factoid question'] += 1
+
+                o_len, o_off = op.get('length', -1), op.get('start', -1)
+                if o_len >= 0:
+                    self.result['info']['list question'] += 1
+
             # internal
             if t.get('internal_error', False):
                 self.__update(i, 'info', 'internal error')
@@ -287,18 +308,8 @@ class TgmEvaluator:
 
             ask = tp['ask_query']
 
-            # non-connected graph
-            if not ask:
-                nodes = [v for t in tp['triples'] for v in t]
-                targets = [tp['binds'].get(t, t) for t in tp['targets']]
-                if False in map(lambda t: t in nodes, targets):
-                    self.__update(i, 'critical', 'non-connected target')
-                    continue
-
             if broken:
                 continue
-
-            yes_no = op['ask_query']
 
             # question type
             if yes_no != ask:
@@ -307,14 +318,30 @@ class TgmEvaluator:
                 else:
                     self.__update(i, 'critical', 'question type (factoid)')
                 continue
+            else:
+                if yes_no:
+                    self.result['ok']['question type (yes-no)'] += 1
+                else:
+                    self.result['ok']['question type (factoid)'] += 1
+
+            # non-connected graph
+            if not ask:
+                nodes = [v for t in tp['triples'] for v in t]
+                targets = [tp['binds'].get(t, t) for t in tp['targets']]
+                if False in map(lambda t: t in nodes, targets):
+                    self.__update(i, 'critical', 'non-connected target')
+                    continue
+                else:
+                    self.result['ok']['non-connected target'] += 1
 
             # length and offset
-            o_len, o_off = op.get('length', -1), op.get('start', -1)
             if o_len >= 0:
                 t_len, t_off = tp.get('length', -1), tp.get('start', -1)
                 if o_len != t_len or o_off != t_off:
                     self.__update(i, 'notice', 'wrong range')
                     continue
+                else:
+                    self.result['ok']['wrong range'] += 1
 
             # independent triples
 

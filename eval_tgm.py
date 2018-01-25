@@ -20,7 +20,7 @@ def dump_all(name, data):
     f.write(json.dumps(data, sort_keys=True, indent=4))
     f.close()
 
-def show_results(r, ilist, clist, nlist):
+def show_results(r, ilist, clist, nlist, detail=True):
     a = r['info']['all']
 
     if len(ilist) > 0:
@@ -28,14 +28,25 @@ def show_results(r, ilist, clist, nlist):
         for i in ilist:
             print('  {}: {}'.format(i, r['info'][i]))
 
+    if a < 1:
+        return
+
+    def show_details(r, ls, val, detail):
+        for k, v in zip(ls, val):
+            tmp_a = r['ok'].get(k, 0) + v
+            if detail and k in r['ok'] and tmp_a > 0:
+                tmp_par = v / tmp_a * 100
+                print('  {}: {} [out of {} ({:.2f}%)]'.format(k, v, tmp_a, tmp_par))
+            else:
+                print('  {}: {}'.format(k, v))
+
     if len(clist) > 0:
         val = [r['critical'][i] for i in clist]
         noc = sum(val)
         par = noc / a * 100
 
         print('Critical - {} queries ({:.2f}%)'.format(noc, par))
-        for k, v in zip(clist, val):
-            print('  {}: {}'.format(k, v))
+        show_details(r, clist, val, detail)
 
     if len(nlist) > 0:
         val = [r['notice'][i] for i in nlist]
@@ -43,8 +54,7 @@ def show_results(r, ilist, clist, nlist):
         par = non / a * 100
 
         print('Notice - {} queries ({:.2f}%)'.format(non, par))
-        for k, v in zip(nlist, val):
-            print('  {}: {}'.format(k, v))
+        show_details(r, nlist, val, detail)
 
 def eval_tgm(name, url, fns):
     print('* Evaluating "{}"'.format(name))
@@ -54,12 +64,13 @@ def eval_tgm(name, url, fns):
     evaluator.add_data(fns)
     evaluator.eval()
 
-    ilist = ['broken origin', 'internal error']
+    ilist = ['broken origin', 'internal error',
+             'yes-no question', 'factoid question', 'list question']
     clist = ['tgm fail', 'syntax', 'question type (factoid)',
              'question type (yes-no)', 'non-connected target']
     nlist = ['wrong range']
 
-    show_results(evaluator.result, ilist, clist, nlist)
+    show_results(evaluator.result, ilist, clist, nlist, detail=False)
 
     dump_errors(name, 'critical', evaluator.data)
     dump_errors(name, 'notice', evaluator.data)
