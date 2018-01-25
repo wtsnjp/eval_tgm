@@ -28,6 +28,8 @@ class TgmEvaluator:
         'foaf': 'http://xmlns.com/foaf/0.1/',
         'obo': 'http://purl.obolibrary.org/obo/',
         'res': 'http://dbpedia.org/resource/',
+        'onto': 'http://dbpedia.org/ontology/',
+        'prop': 'http://dbpedia.org/property/',
     }
 
     def __init__(self, name, url, language='en', cache=False, ns=dict()):
@@ -225,9 +227,9 @@ class TgmEvaluator:
 
         TgmEvaluator.logger.info('Current data size: {}'.format(len(self.data)))
 
-    def __update_result(self, reason, level='error'):
+    def __update(self, i, level, reason):
         self.result[level][reason] += 1
-        return { level: reason }
+        self.data[i]['eval'].update({ level: reason })
 
     def eval(self):
         """
@@ -242,62 +244,79 @@ class TgmEvaluator:
                 'internal error': 0,
                 'broken origin': 0,
             },
-            'error': {
+            'critical': {
                 'question type (yes-no)': 0,
                 'question type (factoid)': 0,
                 'tgm fail': 0,
                 'syntax': 0,
                 'non-connected target': 0
+            },
+            'notice': {
+                'wrong range': 0
             }
         }
 
-        for q in self.data:
+        for i in range(len(self.data)):
             # initialize
-            q['eval'] = dict()
+            self.data[i]['eval'] = dict()
+
+            t  = self.data[i]['tgm']
+            op = self.data[i]['origin_parsed']
+            tp = self.data[i]['tgm_parsed']
 
             # broken origin
             broken = False
-            if q['origin_parsed'].get('syntax_error', False):
-                q['eval'].update(self.__update_result('broken origin', level='info'))
+            if op.get('syntax_error', False):
+                self.__update(i, 'info', 'broken origin')
                 broken = True
 
             # internal
-            if q['tgm'].get('internal_error', False):
-                q['eval'].update(self.__update_result('internal error', level='info'))
+            if t.get('internal_error', False):
+                self.__update(i, 'info', 'internal error')
                 continue
 
             # status
-            if q['tgm']['status'] != 200:
-                q['eval'].update(self.__update_result('tgm fail'))
+            if t['status'] != 200:
+                self.__update(i, 'critical', 'tgm fail')
                 continue
 
             # SPARQL syntax
-            if q['tgm_parsed'].get('syntax_error', False):
-                q['eval'].update(self.__update_result('syntax'))
+            if tp.get('syntax_error', False):
+                self.__update(i, 'critical', 'syntax')
                 continue
 
-            ask = q['tgm_parsed']['ask_query']
+            ask = tp['ask_query']
 
             # non-connected graph
             if not ask:
-                nodes = [v for t in q['tgm_parsed']['triples'] for v in t]
-                targets = [q['tgm_parsed']['binds'].get(t, t) for t in q['tgm_parsed']['targets']]
+                nodes = [v for t in tp['triples'] for v in t]
+                targets = [tp['binds'].get(t, t) for t in tp['targets']]
                 if False in map(lambda t: t in nodes, targets):
-                    q['eval'].update(self.__update_result('non-connected target'))
+                    self.__update(i, 'critical', 'non-connected target')
                     continue
 
             if broken:
                 continue
 
-            yes_no = q['origin_parsed']['ask_query']
+            yes_no = op['ask_query']
 
             # question type
             if yes_no != ask:
                 if yes_no:
-                    q['eval'].update(self.__update_result('question type (yes-no)'))
+                    self.__update(i, 'critical', 'question type (yes-no)')
                 else:
-                    q['eval'].update(self.__update_result('question type (factoid)'))
+                    self.__update(i, 'critical', 'question type (factoid)')
                 continue
 
+            # length and offset
+            o_len, o_off = op.get('length', -1), op.get('start', -1)
+            if o_len >= 0:
+                t_len, t_off = tp.get('length', -1), tp.get('start', -1)
+                if o_len != t_len or o_off != t_off:
+                    self.__update(i, 'notice', 'wrong range')
+                    continue
+
+            # independent triples
+
             # all good
-            q['eval']['info'] = 'all good'
+            self.data[i]['eval']['info'] = 'all good'
