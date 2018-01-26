@@ -34,9 +34,12 @@ def show_results(r, ilist, clist, nlist, detail=True):
     def show_details(r, ls, val, detail):
         for k, v in zip(ls, val):
             tmp_a = r['ok'].get(k, 0) + v
-            if detail and k in r['ok'] and tmp_a > 0:
-                tmp_par = v / tmp_a * 100
-                print('  {}: {} [out of {} ({:.2f}%)]'.format(k, v, tmp_a, tmp_par))
+            if detail and k in r['ok']:
+                if tmp_a > 0:
+                    tmp_par = v / tmp_a * 100
+                    print('  {}: {} [out of {} ({:.2f}%)]'.format(k, v, tmp_a, tmp_par))
+                else:
+                    print('  {}: {} [out of {}]'.format(k, v, tmp_a))
             else:
                 print('  {}: {}'.format(k, v))
 
@@ -68,9 +71,9 @@ def eval_tgm(name, url, fns):
              'yes-no question', 'factoid question', 'list question']
     clist = ['tgm fail', 'syntax', 'question type (factoid)',
              'question type (yes-no)', 'non-connected target']
-    nlist = ['wrong range']
+    nlist = ['wrong range', 'non-connected triple']
 
-    show_results(evaluator.result, ilist, clist, nlist, detail=False)
+    show_results(evaluator.result, ilist, clist, nlist, detail=True)
 
     dump_errors(name, 'critical', evaluator.data)
     dump_errors(name, 'notice', evaluator.data)

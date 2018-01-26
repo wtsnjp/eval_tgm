@@ -9,6 +9,7 @@ from sqa_evaluator import get_logger
 import os
 import json
 import requests
+from functools import reduce
 
 import pyparsing
 from rdflib.plugins import sparql
@@ -255,13 +256,15 @@ class TgmEvaluator:
                 'non-connected target': 0
             },
             'notice': {
-                'wrong range': 0
+                'wrong range': 0,
+                'non-connected triple': 0
             },
             'ok': {
                 'question type (yes-no)': 0,
                 'question type (factoid)': 0,
                 'non-connected target': 0,
-                'wrong range': 0
+                'wrong range': 0,
+                'non-connected triple': 0
             }
         }
 
@@ -324,7 +327,7 @@ class TgmEvaluator:
                 else:
                     self.result['ok']['question type (factoid)'] += 1
 
-            # non-connected graph
+            # non-connected target
             if not ask:
                 nodes = [v for t in tp['triples'] for v in t]
                 targets = [tp['binds'].get(t, t) for t in tp['targets']]
@@ -343,7 +346,30 @@ class TgmEvaluator:
                 else:
                     self.result['ok']['wrong range'] += 1
 
-            # independent triples
+            # non-connected triples
+            if not ask:
+                seen = []
+                for t in tp['triples']:
+                    idx = [
+                        k for k in [
+                            j if True in [n in [u for u in seen[j]] for n in t] else None
+                            for j in range(len(seen))
+                        ]
+                        if not k is None
+                    ]
+                    if len(idx) > 0:
+                        tmp = reduce(lambda a, b: a | b, [seen[j] for j in idx] + [set(t)])
+                        for j in sorted(idx, reverse=True):
+                            del seen[j]
+                        seen.append(tmp)
+                    else:
+                        seen.append(set(t))
+
+                if False in [True in [u in targets for u in s] for s in seen]:
+                    self.__update(i, 'notice', 'non-connected triple')
+                    continue
+                else:
+                    self.result['ok']['non-connected triple'] += 1
 
             # all good
             self.data[i]['eval']['info'] = 'all good'
