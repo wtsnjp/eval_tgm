@@ -2,20 +2,29 @@
 # usage: python eval_tgm.py {json file} ...
 #
 
+import os
 import sys
 import json
 
 from sqa_evaluator.tgm_evaluator import TgmEvaluator
 
 def dump_errors(name, level, data):
-    fn = './dump/{}-{}.json'.format(name, level)
+    ddir = './dump/'
+    if not os.path.exists(ddir):
+        os.mkdir(ddir)
+
+    fn = ddir + '{}-{}.json'.format(name, level)
     crit = [q for q in data if q['eval'].get(level, False)]
     f = open(fn, 'w')
     f.write(json.dumps(crit, sort_keys=True, indent=4))
     f.close()
 
 def dump_all(name, data):
-    fn = './dump/{}-all.json'.format(name)
+    ddir = './dump/'
+    if not os.path.exists(ddir):
+        os.mkdir(ddir)
+
+    fn = ddir + '{}-all.json'.format(name)
     f = open(fn, 'w')
     f.write(json.dumps(data, sort_keys=True, indent=4))
     f.close()
