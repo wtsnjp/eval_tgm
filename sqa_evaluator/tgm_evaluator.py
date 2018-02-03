@@ -246,25 +246,25 @@ class TgmEvaluator:
                 'broken origin': 0,
                 'yes-no question': 0,
                 'factoid question': 0,
-                'list question': 0
+                'range specified': 0
             },
             'critical': {
                 'question type (yes-no)': 0,
                 'question type (factoid)': 0,
                 'tgm fail': 0,
                 'syntax': 0,
-                'non-connected target': 0
+                'disconnected target': 0
             },
             'notice': {
                 'wrong range': 0,
-                'non-connected triple': 0
+                'disconnected triple': 0
             },
             'ok': {
                 'question type (yes-no)': 0,
                 'question type (factoid)': 0,
-                'non-connected target': 0,
+                'disconnected target': 0,
                 'wrong range': 0,
-                'non-connected triple': 0
+                'disconnected triple': 0
             }
         }
 
@@ -292,7 +292,7 @@ class TgmEvaluator:
 
                 o_len, o_off = op.get('length', -1), op.get('start', -1)
                 if o_len >= 0:
-                    self.result['info']['list question'] += 1
+                    self.result['info']['range specified'] += 1
 
             # internal
             if t.get('internal_error', False):
@@ -327,15 +327,15 @@ class TgmEvaluator:
                 else:
                     self.result['ok']['question type (factoid)'] += 1
 
-            # non-connected target
+            # disconnected target
             if not ask:
                 nodes = [v for t in tp['triples'] for v in t]
                 targets = [tp['binds'].get(t, t) for t in tp['targets']]
                 if False in map(lambda t: t in nodes, targets):
-                    self.__update(i, 'critical', 'non-connected target')
+                    self.__update(i, 'critical', 'disconnected target')
                     continue
                 else:
-                    self.result['ok']['non-connected target'] += 1
+                    self.result['ok']['disconnected target'] += 1
 
             # length and offset
             if o_len >= 0:
@@ -346,7 +346,7 @@ class TgmEvaluator:
                 else:
                     self.result['ok']['wrong range'] += 1
 
-            # non-connected triples
+            # disconnected triples
             if not ask:
                 seen = []
                 for t in tp['triples']:
@@ -366,10 +366,10 @@ class TgmEvaluator:
                         seen.append(set(t))
 
                 if False in [True in [u in targets for u in s] for s in seen]:
-                    self.__update(i, 'notice', 'non-connected triple')
+                    self.__update(i, 'notice', 'disconnected triple')
                     continue
                 else:
-                    self.result['ok']['non-connected triple'] += 1
+                    self.result['ok']['disconnected triple'] += 1
 
             # all good
             self.data[i]['eval']['info'] = 'all good'

@@ -35,7 +35,10 @@ def show_results(r, ilist, clist, nlist, detail=True):
     if len(ilist) > 0:
         print('Information - {} questions'.format(a))
         for i in ilist:
-            print('  {}: {}'.format(i, r['info'][i]))
+            if i == 'range specified':
+                print('    {}: {}'.format(i, r['info'][i]))
+            else:
+                print('  {}: {}'.format(i, r['info'][i]))
 
     if a < 1:
         return
@@ -77,10 +80,10 @@ def eval_tgm(name, url, fns):
     evaluator.eval()
 
     ilist = ['broken origin', 'internal error',
-             'yes-no question', 'factoid question', 'list question']
+             'yes-no question', 'factoid question', 'range specified']
     clist = ['tgm fail', 'syntax', 'question type (factoid)',
-             'question type (yes-no)', 'non-connected target']
-    nlist = ['wrong range', 'non-connected triple']
+             'question type (yes-no)', 'disconnected target']
+    nlist = ['wrong range', 'disconnected triple']
 
     show_results(evaluator.result, ilist, clist, nlist, detail=True)
 
