@@ -8,6 +8,7 @@ import json
 
 from sqa_evaluator.tgm_evaluator import TgmEvaluator
 
+
 def dump_errors(name, level, data):
     ddir = './dump/'
     if not os.path.exists(ddir):
@@ -19,6 +20,7 @@ def dump_errors(name, level, data):
     f.write(json.dumps(crit, sort_keys=True, indent=4))
     f.close()
 
+
 def dump_all(name, data):
     ddir = './dump/'
     if not os.path.exists(ddir):
@@ -28,6 +30,7 @@ def dump_all(name, data):
     f = open(fn, 'w')
     f.write(json.dumps(data, sort_keys=True, indent=4))
     f.close()
+
 
 def show_results(r, ilist, clist, nlist, detail=True):
     a = r['info']['all']
@@ -49,7 +52,8 @@ def show_results(r, ilist, clist, nlist, detail=True):
             if detail and k in r['ok']:
                 if tmp_a > 0:
                     tmp_par = v / tmp_a * 100
-                    print('  {}: {} [out of {} ({:.2f}%)]'.format(k, v, tmp_a, tmp_par))
+                    print('  {}: {} [out of {} ({:.2f}%)]'.format(
+                        k, v, tmp_a, tmp_par))
                 else:
                     print('  {}: {} [out of {}]'.format(k, v, tmp_a))
             else:
@@ -71,6 +75,7 @@ def show_results(r, ilist, clist, nlist, detail=True):
         print('Notice - {} queries ({:.2f}%)'.format(non, par))
         show_details(r, nlist, val, detail)
 
+
 def eval_tgm(name, url, fns):
     print('* Evaluating "{}"'.format(name))
 
@@ -79,10 +84,14 @@ def eval_tgm(name, url, fns):
     evaluator.add_data(fns)
     evaluator.eval()
 
-    ilist = ['broken origin', 'internal error',
-             'yes-no question', 'factoid question', 'range specified']
-    clist = ['tgm fail', 'syntax', 'question type (factoid)',
-             'question type (yes-no)', 'disconnected target']
+    ilist = [
+        'broken origin', 'internal error', 'yes-no question',
+        'factoid question', 'range specified'
+    ]
+    clist = [
+        'tgm fail', 'syntax', 'question type (factoid)',
+        'question type (yes-no)', 'disconnected target'
+    ]
     nlist = ['wrong range', 'disconnected triple']
 
     show_results(evaluator.result, ilist, clist, nlist, detail=True)
@@ -91,12 +100,15 @@ def eval_tgm(name, url, fns):
     dump_errors(name, 'notice', evaluator.data)
     dump_all(name, evaluator.data)
 
+
 def main():
     fns = list(reversed(sys.argv[1:]))
 
-    eval_tgm('rocknrole', 'http://ws.okbqa.org:1515/templategeneration/rocknrole', fns)
+    eval_tgm('rocknrole',
+             'http://ws.okbqa.org:1515/templategeneration/rocknrole', fns)
     print()
     eval_tgm('lodqa', 'http://lodqa.org/template.json', fns)
+
 
 if __name__ == '__main__':
     main()

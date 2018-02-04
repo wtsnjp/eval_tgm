@@ -1,5 +1,4 @@
 #!/bin/env python
-
 """
 Module TGM Evaluator
 """
@@ -14,12 +13,13 @@ from functools import reduce
 import pyparsing
 from rdflib.plugins import sparql
 
+
 class TgmEvaluator:
     """
     Evaluator for specified TGM and language
     """
 
-    logger     = get_logger('tgm_evaluator', debug=False)
+    logger = get_logger('tgm_evaluator', debug=False)
     default_ns = {
         'rdf': 'http://xmlns.com/foaf/0.1/',
         'reds': 'http://www.w3.org/2000/01/rdf-schema#',
@@ -43,15 +43,15 @@ class TgmEvaluator:
         :param cache: (optional) if True, cache file will be used
         """
 
-        self.name  = name
-        self.url   = url
-        self.lang  = language
-        self.data  = []
+        self.name = name
+        self.url = url
+        self.lang = language
+        self.data = []
 
         # internal
-        self.__cache     = cache
+        self.__cache = cache
         self.__questions = set()
-        self.__ns        = TgmEvaluator.default_ns
+        self.__ns = TgmEvaluator.default_ns
         self.__ns.update(ns)
 
     def __load_json_data(self, fn):
@@ -67,7 +67,8 @@ class TgmEvaluator:
         # check extention
         bn, ext = os.path.splitext(os.path.basename(fn))
         if ext != '.json':
-            TgmEvaluator.logger.warning('Input file "{}" is not a json file; skipping'.format(fn))
+            TgmEvaluator.logger.warning(
+                'Input file "{}" is not a json file; skipping'.format(fn))
             return qs
 
         # get data from json file
@@ -86,7 +87,11 @@ class TgmEvaluator:
 
             # use only *good* questions
             if tmp_q and tmp_s and not tmp_q in self.__questions:
-                qs.append({ 'nl_query': tmp_q, 'sparql': tmp_s, 'source': bn + ext })
+                qs.append({
+                    'nl_query': tmp_q,
+                    'sparql': tmp_s,
+                    'source': bn + ext
+                })
                 self.__questions.add(tmp_q)
 
         return qs
@@ -99,13 +104,16 @@ class TgmEvaluator:
         :return: result dict
         """
 
-        tgm_in = { 'string': query, 'language': self.lang }
-        headers = { 'content-type': 'application/json' }
+        tgm_in = {'string': query, 'language': self.lang}
+        headers = {'content-type': 'application/json'}
 
         try:
-            r = requests.post(self.url, headers=headers, data=json.dumps(tgm_in).encode('utf-8'))
+            r = requests.post(
+                self.url,
+                headers=headers,
+                data=json.dumps(tgm_in).encode('utf-8'))
         except UnicodeEncodeError:
-            return { 'internal_error': True }
+            return {'internal_error': True}
 
         if r.status_code == 200:
             raw = json.loads(r.text)
@@ -116,7 +124,7 @@ class TgmEvaluator:
                 result = raw
                 result['length'] = 1
         else:
-            result = { 'message': r.text }
+            result = {'message': r.text}
 
         result['status'] = r.status_code
 
@@ -134,10 +142,10 @@ class TgmEvaluator:
             p = sparql.parser.parseQuery(query)
             a = sparql.algebra.translateQuery(p, initNs=self.__ns).algebra
         except pyparsing.ParseException as pe:
-            return { 'syntax_error': True, 'error_message': str(pe) }
+            return {'syntax_error': True, 'error_message': str(pe)}
 
-        result  = { 'ask_query': False, 'triples': [], 'binds': dict() }
-        
+        result = {'ask_query': False, 'triples': [], 'binds': dict()}
+
         def rec(p):
             if isinstance(p, sparql.algebra.CompValue):
                 for k in p:
@@ -187,13 +195,15 @@ class TgmEvaluator:
                 tcf = cdir + '{}-{}.json'.format(bn, self.name)
 
                 if os.path.exists(ocf):
-                    TgmEvaluator.logger.info('Loading a cache "{}"'.format(ocf))
+                    TgmEvaluator.logger.info(
+                        'Loading a cache "{}"'.format(ocf))
                     f = open(ocf, 'r')
                     origin = json.load(f)
                     f.close()
 
                 if os.path.exists(tcf):
-                    TgmEvaluator.logger.info('Loading a cache "{}"'.format(tcf))
+                    TgmEvaluator.logger.info(
+                        'Loading a cache "{}"'.format(tcf))
                     f = open(tcf, 'r')
                     tgm = json.load(f)
                     f.close()
@@ -201,18 +211,29 @@ class TgmEvaluator:
             # get origin
             if origin is None:
                 dataset = self.__load_json_data(fn)
-                parsed  = [self.__parse_sparql(d['sparql']) for d in dataset]
-                origin  = [{ 'origin': d, 'origin_parsed': p } for d, p in zip(dataset, parsed)]
+                parsed = [self.__parse_sparql(d['sparql']) for d in dataset]
+                origin = [{
+                    'origin': d,
+                    'origin_parsed': p
+                } for d, p in zip(dataset, parsed)]
 
             # get tgm
             if tgm is None:
-                templates = [self.__run_tgm(d['origin']['nl_query']) for d in origin]
-                parsed    = [self.__parse_sparql(t.get('query', '')) for t in templates]
-                tgm       = [{ 'tgm': t, 'tgm_parsed': p } for t, p in zip(templates, parsed)]
+                templates = [
+                    self.__run_tgm(d['origin']['nl_query']) for d in origin
+                ]
+                parsed = [
+                    self.__parse_sparql(t.get('query', '')) for t in templates
+                ]
+                tgm = [{
+                    'tgm': t,
+                    'tgm_parsed': p
+                } for t, p in zip(templates, parsed)]
 
             # add data
             self.data.extend([{**o, **t} for o, t in zip(origin, tgm)])
-            TgmEvaluator.logger.info('Prepared {} queries from "{}"'.format(len(tgm), fn))
+            TgmEvaluator.logger.info('Prepared {} queries from "{}"'.format(
+                len(tgm), fn))
 
             # write cache
             if self.__cache:
@@ -226,11 +247,12 @@ class TgmEvaluator:
                     f.write(json.dumps(tgm, sort_keys=True, indent=4))
                     f.close()
 
-        TgmEvaluator.logger.info('Current data size: {}'.format(len(self.data)))
+        TgmEvaluator.logger.info('Current data size: {}'.format(
+            len(self.data)))
 
     def __update(self, i, level, reason):
         self.result[level][reason] += 1
-        self.data[i]['eval'].update({ level: reason })
+        self.data[i]['eval'].update({level: reason})
 
     def eval(self):
         """
@@ -272,7 +294,7 @@ class TgmEvaluator:
             # initialize
             self.data[i]['eval'] = dict()
 
-            t  = self.data[i]['tgm']
+            t = self.data[i]['tgm']
             op = self.data[i]['origin_parsed']
             tp = self.data[i]['tgm_parsed']
 
@@ -352,13 +374,15 @@ class TgmEvaluator:
                 for t in tp['triples']:
                     idx = [
                         k for k in [
-                            j if True in [n in [u for u in seen[j]] for n in t] else None
+                            j
+                            if True in [n in [u for u in seen[j]]
+                                        for n in t] else None
                             for j in range(len(seen))
-                        ]
-                        if not k is None
+                        ] if not k is None
                     ]
                     if len(idx) > 0:
-                        tmp = reduce(lambda a, b: a | b, [seen[j] for j in idx] + [set(t)])
+                        tmp = reduce(lambda a, b: a | b,
+                                     [seen[j] for j in idx] + [set(t)])
                         for j in sorted(idx, reverse=True):
                             del seen[j]
                         seen.append(tmp)
@@ -371,5 +395,5 @@ class TgmEvaluator:
                 else:
                     self.result['ok']['disconnected triple'] += 1
 
-            # all good
-            self.data[i]['eval']['info'] = 'all good'
+            # good
+            self.data[i]['eval']['info'] = 'good'
