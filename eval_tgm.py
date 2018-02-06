@@ -89,7 +89,7 @@ def eval_tgm(name, url, fns):
         'factoid question', 'range specified'
     ]
     clist = [
-        'tgm fail', 'syntax', 'question type (factoid)',
+        'tgm failure', 'syntax', 'question type (factoid)',
         'question type (yes-no)', 'disconnected target'
     ]
     nlist = ['wrong range', 'disconnected triple']

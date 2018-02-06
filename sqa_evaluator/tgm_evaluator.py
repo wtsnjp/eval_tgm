@@ -273,7 +273,7 @@ class TgmEvaluator:
             'critical': {
                 'question type (yes-no)': 0,
                 'question type (factoid)': 0,
-                'tgm fail': 0,
+                'tgm failure': 0,
                 'syntax': 0,
                 'disconnected target': 0
             },
@@ -323,7 +323,7 @@ class TgmEvaluator:
 
             # status
             if t['status'] != 200:
-                self.__update(i, 'critical', 'tgm fail')
+                self.__update(i, 'critical', 'tgm failure')
                 continue
 
             # SPARQL syntax
