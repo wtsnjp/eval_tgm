@@ -256,6 +256,8 @@ def format_qald7(wd, qd):
 
 def main():
     qald_dir = sys.argv[1]
+    if qald_dir[-1] != '/':
+        qald_dir += '/'
     data_dir = './data/'
 
     format_qald1(data_dir, qald_dir)
