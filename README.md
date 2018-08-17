@@ -4,17 +4,22 @@ This is a simple prototype for the sQA Evaluator, a library for subdivided, sema
 
 ## Requirements
 
-* Python3 (3.5 or later)
-* Dependencies
-	* [requests](https://github.com/requests/requests)
-	* [rdflib](https://rdflib.readthedocs.io/en/stable/)
+This script is designed to work with Python3 (3.5 or later).
+
+## Installation
+
+All dependencies can be installed by one shot:
+
+```
+$ python3 setup.py install
+```
 
 ## Usage
 
 Run `eval_tgm.py` with python3 interpreter:
 
 ```
-$ python eval_tgm.py {json file} ...
+$ python3 eval_tgm.py {json file} ...
 ```
 
 ### Supported Datasets
@@ -25,7 +30,7 @@ Run following commands:
 
 ```
 $ git clone https://github.com/ag-sc/QALD
-$ python tools/format_qald_data.py ./QALD
+$ python3 tools/format_qald_data.py ./QALD
 ```
 
 Then you got input json files for `eval_tgm.py` in directory `data`.
